@@ -1,345 +1,262 @@
-# This was created to train either linear probes or MLPs, it's not clear the latter are needed now
-# get_mlp_weights() is currently not used
-
-import torch 
-import torch.nn as nn 
+# import auto tqdm
+import wandb
+import torch
+import torchmetrics
 import torch.optim as optim
-import wandb 
+from tqdm.auto import tqdm
+import torch.nn as nn
 import numpy as np
-import tempfile
-import os
 
-from torch.utils.data import DataLoader
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import f1_score
-from sklearn.model_selection import KFold
+from src.dataset import get_letter_dataset
+from src.probes import LinearProbe, MLPProbe
+from sklearn.metrics import (
+    f1_score,
+    precision_score,
+    recall_score,
+)
 
-from dataset import LetterDataset
-from probes import LinearProbe
-from MLPs import MLPProbe
-from get_training_data import get_training_data
-
-
-# random seeding
-rnd_seed = 42
-
-torch.manual_seed(rnd_seed)
-if torch.cuda.is_available():
-    torch.cuda.manual_seed_all(rnd_seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-
-np.random.seed(rnd_seed)
-
-hidden_dim=4096
-num_hidden_layers=2
-
-def weights_init(m, method='xavier'):
-    """
-    Initialize model weights.
-    Args:
-    - m (nn.Module): Model or layer to initialize.
-    - method (str): Initialization method ('xavier' or 'he').
-    """
-    if isinstance(m, nn.Linear):
-        if method == 'xavier':
-            nn.init.xavier_uniform_(m.weight)
-        elif method == 'he':
-            nn.init.kaiming_uniform_(m.weight, nonlinearity='relu')
-        # You can initialize bias here if you want, e.g.,
-        nn.init.zeros_(m.bias)
-
-
-def create_and_log_artifact(tensor, name, artifact_type, description):
-    # Use a temporary file to save the tensor
-    with tempfile.NamedTemporaryFile(delete=True, suffix='.pt') as tmp:
-        torch.save(tensor, tmp.name)
-        
-        # Create a new artifact
-        artifact = wandb.Artifact(
-            name=name,
-            type=artifact_type,
-            description=description,
-        )
-        artifact.add_file(tmp.name)
-        
-        # Log the artifact
-        wandb.log_artifact(artifact)
-
-
-def get_mlp_weights(model):
-    
-    # Extracts weights from a trained MLP model and returns them as a dictionary.
-    # 
-    #:param model: The trained model.
-    #:return: A dictionary containing weights and biases for each layer.
-    
-    weights = {}
-    weights['input_weight'] = model.fc_input.weight.data.clone().detach()
-    weights['input_bias'] = model.fc_input.bias.data.clone().detach()
-    
-    for idx, layer in enumerate(model.fc_hidden):
-        weights[f'hidden_{idx+1}_weight'] = layer.weight.data.clone().detach()
-        weights[f'hidden_{idx+1}_bias'] = layer.bias.data.clone().detach()
-        
-    weights['output_weight'] = model.fc_output.weight.data.clone().detach()
-    weights['output_bias'] = model.fc_output.bias.data.clone().detach()
-    
-    return weights
-
+import numpy as np
 
 def all_probe_training_runner(
-        embeddings, 
-        all_rom_token_indices, 
-        token_strings,
-        alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZ",   
-        num_samples = 10000, # Define number of samples in training+validation dataset:
-        num_epochs = 100, # Define number of training epochs:
-        batch_size = 32,
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
-        use_wandb = False,
-        probe_type = 'linear',
-        criteria_mode = "anywhere",   # "anywhere", "starting" or "posN" (where N is a digit)
-        ):
+    # data
+    embeddings,
+    vocab,
+    # task
+    alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZ",  # Task
+    criteria_mode="anywhere",  # "anywhere", "starting" or "posN" (where N is a digit)
+    # arch
+    probe_type="linear",
+    # hyperparameters
+    num_epochs=100,  # Define number of training epochs:
+    batch_size=32,
+    learning_rate=0.001,
+    train_test_split=0.8,
+    rebalance=False,
+    # other config
+    device=torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
+    use_wandb=False,
+):
+    group_name = wandb.util.generate_id() + "_" + alphabet
+
+    # Initialize an empty dictionary to store the learned weights for all letters (or, equivalently, 26 "directions", one for each linear probe)
+    embeddings_dim = embeddings.shape[1]
+    probes = {letter: LinearProbe(embeddings_dim).to(device) for letter in alphabet}
+
+    # Now loop over the alphabet and train/validate a probe for each letter:
+
+    for i, letter in enumerate(alphabet):
+        model = probes[letter]
+        nn.init.xavier_uniform_(model.fc.weight)  # best way to do this?
+
+        optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-6)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="min", factor=0.1, patience=10, verbose=True
+        )
 
         if use_wandb:
-                # generate unique run name
-                group_name = wandb.util.generate_id() + "_" + alphabet
+            config = {
+                "letter": letter,
+                "criteria_mode": criteria_mode,
+                "model_name": "gpt-j",
+                "probe_type": probe_type,
+                "train_test_split": train_test_split,
+                "rebalance": rebalance,
+                "batch_size": batch_size,
+                "learning_rate": learning_rate,
+                "num_epochs": num_epochs,
+                "device": device,
+            }
 
-        # Initialize an empty dictionary to store the learned weights for all letters (or, equivalently, 26 "directions", one for each linear probe)
-        embeddings_dim = embeddings.shape[1]
-        all_probe_weights = {letter: None for letter in alphabet}
-        all_probe_biases = {letter: 0 for letter in alphabet}
+            wandb.init(
+                project="letter_presence_probes",
+                group=group_name,
+                config=config,
+            )
 
-        # Now loop over the alphabet and train/validate a probe for each letter:
+        train_loader, test_loader = get_letter_dataset(
+            criterion=criteria_mode,
+            target=letter,
+            embeddings=embeddings,
+            vocab=vocab,
+            batch_size=batch_size,
+            rebalance=rebalance,
+            test_proportion=1 - train_test_split,
+        )
 
-        for i, letter in enumerate(alphabet):
+        # Train the probe for the current letter:
+        model, other_artifacts = train_letter_probe_runner(
+            model=probes[letter],
+            train_loader=train_loader,
+            test_loader=test_loader,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            num_epochs=num_epochs,
+            device=device,
+            use_wandb=use_wandb,
+        )
+        
+        probes[letter] = model
 
-                # Train the probe for the current letter:
-                all_probe_weights[letter], all_probe_biases[letter] = train_letter_probe_runner(
-                letter,   
-                embeddings,
-                token_strings,
-                all_rom_token_indices,
-                num_samples,
-                num_epochs,
-                batch_size,
-                device,
-                probe_type,
-                criteria_mode,
-                use_wandb,
-                wandb_group_name = group_name if use_wandb else None
-                )
+    if use_wandb:
+        # Start a new W&B run for logging the aggregate artifact
+        wandb.init(project="letter_presence_probes", name="aggregate_artifact_logging")
+        # create_and_log_artifact(
+        #     probes,
+        #     "all_probe_weights",
+        #     "model_tensors",
+        #     "All case-insensitive letter presence probe weights tensor",
+        # )
+        
+        # log all probe weights
+        # artifacts = []
+        # for letter, probe in probes.items():
+        #     artifact = wandb.Artifact(
+        #         letter,
+        #         type="model_tensors",
+        #         description=f"Letter presence probe weights tensor for letter {letter}",
+        #     )
+        #     artifact.add_file(f"probe_{letter}_{criteria_mode}.pt", probe.fc.weight.detach())
+        #     artifacts.append(artifact)
+        
+        # wandb.log_artifact(artifacts)
+        
+        wandb.finish()  # End the run
 
-        if use_wandb:
-            # Start a new W&B run for logging the aggregate artifact
-            wandb.init(project="letter_presence_probes", name="aggregate_artifact_logging")
-            create_and_log_artifact(all_probe_weights, "all_probe_weights", "model_tensors", "All case-insensitive letter presence probe weights tensor")
-            wandb.finish()  # End the run
+    return probes
 
-        return all_probe_weights, all_probe_biases
 
 def train_letter_probe_runner(
-        letter,      
-        embeddings,
-        token_strings,
-        all_rom_token_indices,
-        num_samples,
-        num_epochs,
-        batch_size,
-        device,
-        probe_type,
-        criteria_mode,
-        use_wandb = False,
-        wandb_group_name = None,
-        ):
+    model,
+    train_loader,
+    test_loader,
+    num_epochs,
+    optimizer: optim.Optimizer,
+    scheduler: optim.lr_scheduler.ReduceLROnPlateau,
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
+    use_wandb=False,
+):
+    loss_fn = nn.BCEWithLogitsLoss()
 
-        if use_wandb:
+    steps = 0
+    metric_frequency = 10
+    for epoch in range(num_epochs):
+        model.train()  # Set the model to training mode
 
-                config = {
-                    "letter": letter,            
-                    "criteria_mode": criteria_mode,
-                    "model_name": "gpt-j",
-                    "probe_type": probe_type,
-                    "train_test_split": 0.2,
-                    "seed": rnd_seed,
-                    "case_sensitive": False,
-                    "batch_size": batch_size,
-                    "learning_rate": 0.001,
-                    "num_samples": num_samples,
-                    "num_epochs": num_epochs,
-                    "device": device,
-                }
-                
-                wandb.init(
-                    project="letter_presence_probes",
-                    group=wandb_group_name,
-                    config=config,
+        pbar = tqdm(train_loader)
+
+        for batch_embeddings, batch_labels in pbar:
+            # Move your data to the chosen device during the training loop and ensure they're float32
+            # By explicitly converting to float32, you ensure that the data being fed into your model has the expected data type, and this should resolve the error you en
+            # batch_embeddings = batch_embeddings
+            # batch_labels = batch_labels.to(device).float()
+
+            optimizer.zero_grad()
+            outputs = model(batch_embeddings).squeeze()
+            loss = loss_fn(outputs, batch_labels.to(device).float())
+            loss.backward()
+            optimizer.step()
+
+            if steps % metric_frequency == 0:
+                with torch.no_grad():
+                    probs = torch.sigmoid(outputs).detach() > 0.5
+                    
+                    accuracy = torchmetrics.functional.accuracy(probs, batch_labels, task = 'binary', num_classes=2).item()
+                    precision = torchmetrics.functional.precision( probs, batch_labels, task= 'binary', num_classes=2).item()
+                    recall = torchmetrics.functional.recall(probs, batch_labels, 'binary', num_classes=2).item()
+                    f1 = torchmetrics.functional.f1_score(probs, batch_labels, 'binary', num_classes=2).item()
+        
+                    # predictions
+                    pbar.set_description(
+                        f"Epoch {epoch+1} / {num_epochs} | Loss: {loss:.4f} | Precision: {precision:.4f} | Recall: {recall:.4f}"
+                    )
+                    if use_wandb:
+                        # Log metrics to W&B
+                        wandb.log(
+                            {
+                                "training_metrics/precision": precision,
+                                "training_metrics/recall": recall,
+                                "training_metrics/loss": loss.item(),
+                                # "training_metrics/f1_score": f1_score,
+                                "metrics/learning_rate": optimizer.param_groups[0]["lr"],
+                            },
+                            step=steps,
+                        )
+
+            steps += 1
+            
+        # EVALUATION (VALIDATION) PHASE
+
+        # Set the model to evaluation mode
+        model.eval()
+
+        # Keep track of correct predictions and total predictions
+        correct_preds = 0
+        total_preds = 0
+        validation_loss = 0.0
+
+        with torch.no_grad():  # Ensure no gradients are computed during validation
+            all_labels = []  # Store all true labels
+            all_predictions = []  # Store all model predictions
+
+            for batch_embeddings, batch_labels in test_loader:
+                batch_embeddings = batch_embeddings.to(
+                    device
+                ).float()  # Ensure embeddings are on the correct device and dtype
+                batch_labels = batch_labels.to(
+                    device
+                ).float()  # Ensure labels are on the correct device and dtype
+
+                outputs = model(batch_embeddings).squeeze()
+
+                # Calculate loss on validation data
+                loss = loss_fn(outputs, batch_labels)
+                validation_loss += loss.item()  # Update validation loss
+
+                # Convert outputs to probabilities
+                probs = torch.sigmoid(outputs)
+                predictions = (probs > 0.5).float()
+
+                # Update correct and total predictions
+                correct_preds += (predictions == batch_labels).sum().item()
+                total_preds += batch_labels.size(0)
+
+                # Append batch labels and predictions to all_labels and all_predictions
+                all_labels.append(batch_labels.cpu().numpy())
+                all_predictions.append(predictions.cpu().numpy())
+
+            # Flatten all_labels and all_predictions lists and convert to numpy arrays
+            all_labels = np.concatenate(all_labels)
+            all_predictions = np.concatenate(all_predictions)
+
+            # Compute F1 Score
+            f1 = f1_score(all_labels, all_predictions)
+
+            validation_loss /= len(test_loader)  # Get the average validation loss
+
+            # Calculate accuracy and average loss
+            accuracy = correct_preds / total_preds
+            precision = precision_score(all_labels, all_predictions)
+            recall = recall_score(all_labels, all_predictions)
+
+            # print(f"eval_metrics/accuracy: {accuracy * 100:.2f}%")
+            # print(f"eval_metrics/precision: {precision * 100:.2f}%")
+            # print(f"eval_metrics/recall: {recall * 100:.2f}%")
+            # print(f"eval_metrics/loss: {validation_loss:.4f}")
+            # print(f"eval_metrics/f1: {f1:.4f}\n")
+            scheduler.step(validation_loss)
+
+            if use_wandb:
+                wandb.log(
+                    {
+                        "eval_metrics/accuracy": accuracy * 100,
+                        "eval_metrics/precision": precision * 100,
+                        "eval_metrics/recall": recall * 100,
+                        "eval_metrics/loss": validation_loss,
+                        "eval_metrics/f1": f1,
+                    }
                 )
 
-        embeddings_dim = embeddings.shape[1]
-        probe_weights_tensor = torch.zeros(embeddings_dim).to(device)
-        # initialise the shape(4096,) tensor to store this probes learned weights in
-        # no need to intialise the bias as that's just going to be a scalar
-    
-        # construct tensors of embeddings and labels for training and validation
+    if use_wandb:
+        wandb.finish()
 
-        all_embeddings, all_labels = get_training_data(
-        criteria_mode, letter, num_samples, embeddings, all_rom_token_indices, token_strings)
-        
-        # split the data into training and validation sets (using a function from the sklearn.model_selection module)
-        X_train, X_val, y_train, y_val = train_test_split(all_embeddings, all_labels, test_size=0.2, random_state=rnd_seed, stratify=all_labels)
-        
-        # Initialize model and optimizer based on probe_type
-        if probe_type == 'linear':
-            model = LinearProbe(embeddings_dim).to(device)
-            #model.apply(lambda m: weights_init(m, method='xavier'))
-            model.apply(lambda m: weights_init(m, method='he'))
-        elif probe_type == 'mlp':
-            model = MLPProbe(embeddings_dim, hidden_dim=hidden_dim, num_hidden_layers=num_hidden_layers).to(device)
-        
-        optimizer = optim.Adam(model.parameters(), lr = 0.001, weight_decay=1e-6)
-
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10, verbose=True)
-        criterion = nn.BCEWithLogitsLoss()         # Binary cross-entropy loss with logits (because we haven't used an activation in our model)
-                                # This combines sigmoid activation, which converts logits to probabilities, and binary cross entropy loss
-                    # outputs will be probabilities 0 < p < 1 that the letter belongs to the token. The label will be 0 or 1 (it doesn't or it does).
-        
-        # create DataLoader for your training dataset
-        train_dataset = LetterDataset(X_train, y_train)
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-        
-        #X_train, y_train (embeddings and labels for training) were created above using standard methods applied to all_embeddings and all_labels tensors            
-        #X_val, y_val (embeddings and labels for validation) were likewise created above using standard methods applied to all_embeddings and all_labels tensors
-        
-        # TRAINING LOOP
-        
-        print('\n_________________________________________________\n')
-        for epoch in range(num_epochs):
-            model.train()  # Set the model to training mode
-            total_loss = 0.0
-
-            for batch_embeddings, batch_labels in train_loader:
-                # Move your data to the chosen device during the training loop and ensure they're float32
-                # By explicitly converting to float32, you ensure that the data being fed into your model has the expected data type, and this should resolve the error you en
-                  batch_embeddings = batch_embeddings.to(device).float()
-                  batch_labels = batch_labels.to(device).float()  
-
-                  optimizer.zero_grad()
-                  outputs = model(batch_embeddings).squeeze()
-                  loss = criterion(outputs, batch_labels)
-                  loss.backward()
-                  optimizer.step()  
-
-                  total_loss += loss.item()
-                        
-                  if use_wandb:
-
-                      wandb.log({"loss": loss.item()})
-                
-            print(f"{letter}: epoch {epoch + 1}/{num_epochs}, Loss: {total_loss / len(train_loader)}")
-
-
-                
-            # EVALUATION (VALIDATION) PHASE
-
-            # Set the model to evaluation mode
-            model.eval()
-
-            # Create DataLoader for validation data
-            val_dataset = LetterDataset(X_val, y_val)
-            val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
-
-            # Keep track of correct predictions and total predictions
-            correct_preds = 0
-            total_preds = 0
-            validation_loss = 0.0
-
-            with torch.no_grad():  # Ensure no gradients are computed during validation
-                    all_labels = []  # Store all true labels
-                    all_predictions = []  # Store all model predictions
-
-                    for batch_embeddings, batch_labels in val_loader:
-                            batch_embeddings = batch_embeddings.to(device).float()  # Ensure embeddings are on the correct device and dtype
-                            batch_labels = batch_labels.to(device).float()  # Ensure labels are on the correct device and dtype
-
-                            outputs = model(batch_embeddings).squeeze()
-
-                            # Calculate loss on validation data
-                            loss = criterion(outputs, batch_labels)
-                            validation_loss += loss.item()  # Update validation loss
-
-                            # Convert outputs to probabilities
-                            probs = torch.sigmoid(outputs)
-                            predictions = (probs > 0.5).float()
-
-                            # Update correct and total predictions
-                            correct_preds += (predictions == batch_labels).sum().item()
-                            total_preds += batch_labels.size(0)
-
-                            # Append batch labels and predictions to all_labels and all_predictions
-                            all_labels.append(batch_labels.cpu().numpy())
-                            all_predictions.append(predictions.cpu().numpy())
-
-                    # Flatten all_labels and all_predictions lists and convert to numpy arrays
-                    all_labels = np.concatenate(all_labels)
-                    all_predictions = np.concatenate(all_predictions)
-
-                    # Compute F1 Score
-                    f1 = f1_score(all_labels, all_predictions)
-
-                    validation_loss /= len(val_loader)  # Get the average validation loss
-
-                    if probe_type == 'linear':
-                        # Assuming model.linear is your linear layer in the LinearProbe model. 
-                        # Adjust this depending on how you've structured your LinearProbe class.
-                        probe_weights_tensor = model.fc.weight.data.clone().detach()  
-                        probe_bias = model.fc.bias.data.clone().detach()
-
-                        if use_wandb:
-                            artifact_name1 = f"probe_weights_for_{letter.upper()}_criterion_{criteria_mode}"
-                            artifact_name2 = f"probe_bias_for_{letter.upper()}_criterion_{criteria_mode}"
-                            print("Now logging probe weight tensor and bias as wandb artifacts...")
-                            create_and_log_artifact(
-                                probe_weights_tensor,
-                                artifact_name1,
-                                "model_tensors",
-                                f"Letter presence probe weight tensor for {letter.upper()} with criterion_{criteria_mode}"
-                            )
-                            create_and_log_artifact(
-                                probe_bias,
-                                artifact_name2,
-                                "model_tensors",
-                                f"Letter presence probe bias for {letter.upper()} with criterion_{criteria_mode}"
-                            )
-
-                    elif probe_type == 'mlp':
-                        # Skip logging weights for mlp, since you're not storing or using them
-                        pass
-
-
-                    # Calculate accuracy and average loss
-                    accuracy = correct_preds / total_preds
-                    print(f"Validation Accuracy: {accuracy * 100:.2f}%")
-                    print(f"Validation Loss: {validation_loss:.4f}")
-                    print(f"F1 Score: {f1:.4f}\n")
-                    scheduler.step(validation_loss)
-                    
-                    if use_wandb:
-                        wandb.log({
-                            "validation_loss": validation_loss,
-                            "validation_accuracy": accuracy,
-                            "f1_score": f1
-                        })
-
-
-        if use_wandb:
-            wandb.finish()
-
-        if probe_type == 'linear':
-            return probe_weights_tensor, probe_bias
-        elif probe_type == 'mlp':
-            return torch.zeros(4096)  # This is just a placeholder, as it seems nothing really needs to be returned
-                                      # We're not interested in the weights. But the code above is expecting a tensor 
-                                      # to be returned and logged as a value for the current letter-key, so...
-            
+    return model, 0

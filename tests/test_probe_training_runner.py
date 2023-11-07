@@ -1,43 +1,35 @@
 import pytest 
 import os 
-import wandb
+
+from transformer_lens import HookedTransformer
+
 from src.probe_training import all_probe_training_runner
-from src.model_loading import load_or_download_tokenizer, load_or_save_embeddings, load_or_download_model
-from src.letter_token_utils import (
-    get_token_strings,
-    get_all_rom_tokens,
-)
 
-@pytest.fixture()
+
+MODEL_NAME = "gpt2"
+
+@pytest.fixture(scope="module")
 def model():
-    model = load_or_download_model(model_name="gpt2", device="cpu")
-    return model
+    return HookedTransformer.from_pretrained(MODEL_NAME)
 
-@pytest.fixture()
-def tokenizer():
-    tokenizer = load_or_download_tokenizer(model_name="gpt2")
-    return tokenizer
 
-@pytest.fixture()
-def embeddings(model):
-    embeddings = load_or_save_embeddings(model, model_name="gpt2", device="cpu")
-    return embeddings
-
-def test_all_probe_training_runner(embeddings, tokenizer):
-
+def test_all_probe_training_runner(model):
     # set wandb to offline mode
-    os.environ["WANDB_MODE"] = "online"
+    os.environ["WANDB_MODE"] = "offline"
 
-    token_strings = get_token_strings(tokenizer)
-    _, all_rom_token_indices = get_all_rom_tokens(token_strings)
-    all_rom_token_gt2_indices = [idx for idx in all_rom_token_indices if len(token_strings[idx].lstrip()) > 2]
-
+    vocab = model.tokenizer.get_vocab()
     probe_weights_tensor = all_probe_training_runner(
-        embeddings, 
-        all_rom_token_gt2_indices,
-        token_strings,
+        embeddings=model.W_E.detach(),
+        vocab=vocab,
         alphabet="ABC",
+        criteria_mode="starts",
+        probe_type="linear",
+        num_epochs=4,
+        batch_size=32,
+        learning_rate=0.005,
+        train_test_split=0.95,
+        rebalance=True,
         use_wandb=True,
-        )
+    )
     
     assert probe_weights_tensor is not None
