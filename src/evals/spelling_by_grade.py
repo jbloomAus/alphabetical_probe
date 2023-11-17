@@ -1,6 +1,7 @@
 import random
+from typing import Dict, List, Tuple
 
-from eval_utils import get_spelling, run_inference_on_model
+from evals.eval_utils import get_spelling, run_inference_on_model
 
 def prepare_grade_spelling_eval(filename: str, separator: str, case='upper'):
     """Takes a file with words separated by grades. 
@@ -24,7 +25,7 @@ def prepare_grade_spelling_eval(filename: str, separator: str, case='upper'):
     return words_by_grade
 
 
-def create_few_shot_grade_spelling_prompt(word: str, word_list: tuple(str, str), num_shots: int):
+def create_few_shot_grade_spelling_prompt(word: str, word_list: Tuple[str, str], num_shots: int):
     """Takes in a word we want to spell, a list of words to sample from, and the number of shots.
     Tuple is of the form (word, spelling)."""
     assert 0 <= num_shots < len(word_list), "Number of shots must be between 0 and the number of words in the list, minus the chosen word."
@@ -39,7 +40,7 @@ def create_few_shot_grade_spelling_prompt(word: str, word_list: tuple(str, str),
     return prompt
 
 
-def assess_model_on_words(model, tokenizer, word_list: list(tuple(str, str)), num_shots: int, batch_size=10):
+def assess_model_on_words(model, tokenizer, word_list: List[Tuple[str, str]], num_shots: int, batch_size=10):
     """Takes in our list of words and how many shots we want to give the model.
     Creates prompts using those few shots, then runs inference on the model."""
     data = {grade: [] for grade in word_list.keys()}
@@ -47,10 +48,10 @@ def assess_model_on_words(model, tokenizer, word_list: list(tuple(str, str)), nu
     for grade in word_list:
         print(f"Assessing Grade {grade}")
         prompts = [create_few_shot_grade_spelling_prompt(word[0], word_list[grade], num_shots) for word in word_list[grade]]
-        data[grade] = run_inference_on_model(model, tokenizer, prompts, [w[1] for w in word_list], batch_size)
+        data[grade] = run_inference_on_model(model, tokenizer, prompts, [w[1] for w in word_list[grade]], batch_size)
 
     return data
 
-def get_spelling_accuracy(data: dict):
+def get_spelling_accuracy(data: Dict[int, List[Dict]]):
     """Takes in a dictionary of results, and returns the accuracy of the model on each grade."""
     return {grade: sum([1 if d['response'].startswith(d['answer']) else 0 for d in data[grade]]) / len(data[grade]) for grade in data.keys()}

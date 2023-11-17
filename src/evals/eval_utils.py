@@ -22,7 +22,6 @@ def run_inference_on_model(model, tokenizer, prompts, answers, batch_size):
     An object containing a list of {'prompt': prompt, 'answer': answer, 'response': response} dicts,
     where response is the model's output as a string.
     """
-    max_tokens = [len(tokenizer.encode(ans, add_special_tokens=False))+1 for ans in answers]
     num_batches = (len(prompts) + batch_size - 1) // batch_size
     data = []
 
@@ -32,7 +31,8 @@ def run_inference_on_model(model, tokenizer, prompts, answers, batch_size):
 
         inputs = tokenizer(prompts[i*batch_size], padding=True, truncation=True, return_tensors="pt").to(model.device)
         
-        outputs = model.generate(**inputs, max_new_tokens=max_tokens[start_index:end_index], num_return_sequences=1)
+        max_batch_tokens = max([len(tokenizer.encode(ans, add_special_tokens=False))+1 for ans in answers[start_index:end_index]])
+        outputs = model.generate(**inputs, max_new_tokens=max_batch_tokens, num_return_sequences=1)
         responses = [tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
         
         for i, response in enumerate(responses):
