@@ -50,3 +50,7 @@ def assess_model_on_words(model, tokenizer, word_list: list(tuple(str, str)), nu
         data[grade] = run_inference_on_model(model, tokenizer, prompts, [w[1] for w in word_list], batch_size)
 
     return data
+
+def get_spelling_accuracy(data: dict):
+    """Takes in a dictionary of results, and returns the accuracy of the model on each grade."""
+    return {grade: sum([1 if d['response'].startswith(d['answer']) else 0 for d in data[grade]]) / len(data[grade]) for grade in data.keys()}

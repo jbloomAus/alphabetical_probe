@@ -39,3 +39,9 @@ def run_inference_on_model(model, tokenizer, prompts, answers, batch_size):
             data.append({'prompt': prompts[start_index + i], 'answer': answers[start_index + i], 'response': response})
     
     return data
+
+
+def get_accuracy(outputs, answers):
+    """Get the accuracy of a model's outputs compared to a list of answers.
+    Works as a generic accuracy check if you're not looking for something in particular."""
+    return sum([1 if outputs[i] == answers[i] else 0 for i in range(len(outputs))]) / len(outputs)
