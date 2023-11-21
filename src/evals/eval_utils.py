@@ -29,7 +29,7 @@ def run_inference_on_model(model, tokenizer, prompts, answers, batch_size):
         start_index = i * batch_size
         end_index = min(len(prompts), start_index + batch_size)
 
-        inputs = tokenizer(prompts[i*batch_size], padding=True, truncation=True, return_tensors="pt").to(model.device)
+        inputs = tokenizer(prompts[start_index:end_index], padding=True, truncation=True, return_tensors="pt").to(model.device)
         
         max_batch_tokens = max([len(tokenizer.encode(ans, add_special_tokens=False))+1 for ans in answers[start_index:end_index]])
         outputs = model.generate(**inputs, max_new_tokens=max_batch_tokens, num_return_sequences=1)
