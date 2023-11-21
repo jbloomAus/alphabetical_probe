@@ -15,7 +15,7 @@ def prepare_grade_spelling_eval(filename: str, separator: str, case='upper'):
         
         # Determine which lines are in grade 1, 2, etc.
         grade_indices = [i for i in range(len(lines)-1) if lines[i].startswith("GRADE")] + [len(lines)]
-        words_by_grade = {i+1: [] for i in range(len(grade_indices))}
+        words_by_grade = {i+1: [] for i in range(len(grade_indices)-1)}
         
         for i, idx in enumerate(grade_indices):
             if i+1 < len(grade_indices): # Ensure we don't overflow.

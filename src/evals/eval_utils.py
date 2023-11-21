@@ -36,7 +36,9 @@ def run_inference_on_model(model, tokenizer, prompts, answers, batch_size):
         responses = [tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
         
         for i, response in enumerate(responses):
-            data.append({'prompt': prompts[start_index + i], 'answer': answers[start_index + i], 'response': response})
+            data.append({'prompt': prompts[start_index + i],
+                         'answer': answers[start_index + i], 
+                         'response': response.replace(prompts[start_index + i], '')})
     
     return data
 
