@@ -1,15 +1,16 @@
 import plotly.graph_objects as go
 import numpy as np
+from typing import Dict, List
 
 
-def basic_bar_graph(data, ymin=0, ymax=1):
-    """Creates a basic graph from a set of [(x, y)] data."""
+def basic_bar_graph(data: Dict[int, int], ymin=0, ymax=1):
+    """Creates a basic graph from a set of {x_1: y_1, ... x_n: y_n} data."""
     fig = go.Figure(go.Bar(x=list(data.keys()), y=list(data.values())))
     fig.update_layout(yaxis=dict(range=[ymin, ymax]))
     fig.show()
  
     
-def nested_bar_graph(data, shades, title='', xtitle='', ytitle=''):
+def nested_bar_graph(data: Dict[int, Dict[int, int]], shades: List[str], title='', xtitle='', ytitle=''):
     """Creates a nested bar graph from a nested dictionary of data.
     The bar graph has each column consisting of multiple bars, each of which is a different color.
     If less colors than bars are provided, the colors will repeat."""

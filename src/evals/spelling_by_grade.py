@@ -52,6 +52,6 @@ def assess_model_on_words(model, tokenizer, word_list: List[Tuple[str, str]], nu
 
     return data
 
-def get_spelling_accuracy(data: Dict[int, List[Dict]]):
+def get_spelling_accuracy(data: Dict[int, List[Dict[int, float]]]):
     """Takes in a dictionary of results, and returns the accuracy of the model on each grade."""
     return {grade: sum([1 if d['response'].startswith(d['answer']) else 0 for d in data[grade]]) / len(data[grade]) for grade in data.keys()}

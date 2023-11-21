@@ -1,13 +1,15 @@
 import tqdm
 
+from typing import List
 
-def get_spelling(word, separator, case="upper"):
+
+def get_spelling(word: str, separator: str, case="upper"):
     """Get the spelling of a word with a given separator and case. e.g, hello -> H-E-L-L-O"""
     case_map = {"upper": lambda x: x.upper(), "lower": lambda x: x.lower(), "original": lambda x: x}
     return separator.join([char if case not in case_map else case_map[case](char) for char in word])
 
 
-def run_inference_on_model(model, tokenizer, prompts, answers, batch_size):
+def run_inference_on_model(model, tokenizer, prompts: List[str], answers: List[str], batch_size: int):
     """Run inference on a model with a given tokenizer and device.
     This function is designed to be agnostic, so it doesn't judge the answers for you.
     
@@ -43,7 +45,7 @@ def run_inference_on_model(model, tokenizer, prompts, answers, batch_size):
     return data
 
 
-def get_accuracy(outputs, answers):
+def get_accuracy(outputs: List[str], answers: List[str]):
     """Get the accuracy of a model's outputs compared to a list of answers.
     Works as a generic accuracy check if you're not looking for something in particular."""
     return sum([1 if outputs[i] == answers[i] else 0 for i in range(len(outputs))]) / len(outputs)
