@@ -51,7 +51,10 @@ def run_huggingface_inference(model, tokenizer, prompts: List[str], answers: Lis
     inputs = tokenizer(prompts, padding=True, truncation=True, return_tensors="pt").to(model.device)
         
     max_batch_tokens = max([len(tokenizer.encode(ans, add_special_tokens=False))+1 for ans in answers])
-    outputs = model.generate(**inputs, max_new_tokens=max_batch_tokens, num_return_sequences=1, temperature=temperature, do_sample=True)
+    if temperature > 0:
+        outputs = model.generate(**inputs, max_new_tokens=max_batch_tokens, num_return_sequences=1, temperature=temperature, do_sample=True)
+    else:
+        outputs = model.generate(**inputs, max_new_tokens=max_batch_tokens, num_return_sequences=1, do_sample=False)
     responses = [tokenizer.decode(output, skip_special_tokens=True) for output in outputs]
     return responses
 
