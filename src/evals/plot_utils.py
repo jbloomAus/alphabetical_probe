@@ -1,8 +1,8 @@
-import plotly.graph_objects as go
+from typing import Dict, List
+
 import numpy as np
 import pandas as pd
-
-from typing import Dict, List
+import plotly.graph_objects as go
 
 
 def basic_bar_graph(data: Dict[int, int], ymin=0, ymax=1):

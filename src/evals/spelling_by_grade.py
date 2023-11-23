@@ -1,7 +1,8 @@
-import random
+from evals.eval_utils import get_spelling, run_inference_on_model
 from typing import Dict, List, Tuple
 
-from evals.eval_utils import get_spelling, run_inference_on_model
+import random
+
 
 def prepare_grade_spelling_eval(filename: str, separator: str, case='upper'):
     """Takes a file with words separated by grades. 
@@ -51,7 +52,7 @@ def assess_model_on_words(model, model_type: str, tokenizer, word_list: List[Tup
         data[grade] = run_inference_on_model(model, model_type, tokenizer, prompts, [w[1] for w in word_list[grade]], batch_size)
         data[grade] = [{'prompt': item['prompt'], 
                         'answer': item['answer'], 
-                        'response': item['response'].split('A: ')[-1].split("\n\n")[0].replace('\n', '')} 
+                        'response': item['response'].split('A: ')[-1].split("\n\n")[0].replace('\n', '').replace('<|endoftext|>', '')} 
                        for item in data[grade]]
 
     return data
