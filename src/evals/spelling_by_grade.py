@@ -49,6 +49,10 @@ def assess_model_on_words(model, model_type: str, tokenizer, word_list: List[Tup
         print(f"Assessing Grade {grade}")
         prompts = [create_few_shot_grade_spelling_prompt(word[0], word_list[grade], num_shots) for word in word_list[grade]]
         data[grade] = run_inference_on_model(model, model_type, tokenizer, prompts, [w[1] for w in word_list[grade]], batch_size)
+        data[grade] = [{'prompt': item['prompt'], 
+                        'answer': item['answer'], 
+                        'response': item['response'].split('A: ')[-1].split("\n\n")[0].replace('\n', '')} 
+                       for item in data[grade]]
 
     return data
 
