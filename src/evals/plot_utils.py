@@ -1,5 +1,7 @@
 import plotly.graph_objects as go
 import numpy as np
+import pandas as pd
+
 from typing import Dict, List
 
 
@@ -37,3 +39,32 @@ def nested_bar_graph(data: Dict[int, Dict[int, int]], shades: List[str], title='
         yaxis=dict(title=ytitle),
     )
     fig.show()
+ 
+   
+def create_table(dataset: Dict[int, Dict], n_pairs=5):
+    """Create a color-coded table from a dataset of {grade: {'prompt': prompt, 'answer': answer, 'response': response}} dicts."""
+    table, current_row, columns = [], [], []
+    for i in range(n_pairs):
+        columns.append(f"Expected {i+1}")
+        columns.append(f"Result {i+1}")
+
+    for key in dataset:
+        for item in dataset[key]:
+            current_row.extend([item['answer'], item['response']])
+            if len(current_row) == n_pairs * 2:  # Each row should have 6 columns
+                table.append(current_row)
+                current_row = []
+
+    if current_row:  # Handle the last incomplete row
+        current_row.extend([""] * ((n_pairs*2) - len(current_row)))  # Fill the rest of the row with empty strings
+        table.append(current_row)
+
+    
+    df = pd.DataFrame(table, columns=columns)
+    df = df.style.apply(lambda x: [style_answers(val, x.iloc[i-1]) if i % 2 else '' for i, val in enumerate(x)], axis=1)
+    display(df)
+
+
+def style_answers(val, prev_val, true_color='lightgreen', false_color='lightcoral'):
+    color = true_color if val.strip() == prev_val.strip() else false_color
+    return f'background-color: {color}'
