@@ -1,4 +1,4 @@
-from evals.eval_utils import get_spelling, run_inference_on_model, EvalResponse, ModelType
+from evals.eval_utils import get_spelling, run_inference_on_model, ModelType
 from typing import Dict, List, Tuple, TypedDict
 
 import random
@@ -7,13 +7,14 @@ import re
 # TODO: Remove tokenizer, use model.tokenizer if possible.
 # TODO: Add "is letter in word" eval.
 # TODO: Genericise the prompt functions a bit more, there's repeated code here.
-# Should this be in eval_utils?
 class SpellingEvalDict(TypedDict):
-    """Defines the structure of a dictionary containing the data for a spelling eval prompt."""
+    """Defines the structure of a dictionary containing the data for a spelling eval prompt.
+    Contains the word, prompt, answer, raw response, and formatted response."""
     word: str
     prompt: str
     answer: str
     response: str
+    formatted_response: str
     
 
 class SpellingEvalResponseDict(TypedDict):
@@ -23,6 +24,7 @@ class SpellingEvalResponseDict(TypedDict):
     
     
 # TODO: Consider an Eval generic class that can be extended for different evals.
+# TODO: Consider a filter function to allow for filtering (e.g, positional eval only on words with 2+ letters).
 class GradeSpellingEval:
     """An object that contains the functions needed to run an eval on spelling by grade.
     Together, the functions define the evaluation.
@@ -49,7 +51,7 @@ class GradeSpellingEval:
         return self.format_response_function(response)
     
     def get_accuracy(self, data: Dict[int, List[SpellingEvalDict]]) -> Dict[int, float]:
-        """Takes in a dictionary of {grade: [{prompt: str, answer: str, response: str}, ...], ...
+        """Takes in a dictionary of {grade: SpellingEvalDict} items.
         Returns the accuracy of the model on each grade according to the eval's metric function."""
         return self.metric_function(data)
     
@@ -67,7 +69,7 @@ class GradeSpellingEval:
         batch_size: How many prompts to pass in at once to the model.
         
         Returns:
-        An EvalResponseDict containing the data and accuracy of the eval.
+        A SpellingEvalResponseDict containing the data and accuracy of the eval.
         """
         data = {grade: [] for grade in word_list.keys()}
     
@@ -75,6 +77,8 @@ class GradeSpellingEval:
             print(f"Assessing Grade {grade}")
             prompts, answers = zip(*[self.prompt_function(word[0], word_list[grade], num_shots) for word in word_list[grade]])
             data[grade] = run_inference_on_model(model, model_type, tokenizer, prompts, answers, batch_size)
+            for item in data[grade]:
+                item['formatted_response'] = self.format_response(item['response'])
  
         response: SpellingEvalResponseDict = {'data': data, 'accuracy': self.get_accuracy(data)}
         return response
@@ -133,14 +137,14 @@ def create_full_spelling_prompt(word: str, word_list: List[Tuple[str, str]], num
     return prompt, answer
 
 
-def format_full_spelling_response(item):
+def format_full_spelling_response(item: str) -> str:
     """Format the response to a full spelling prompt."""
-    return item['response'].split('A: ')[-1].split("\n\n")[0].replace('\n', '').replace('<|endoftext|>', '').strip()
+    return item.split('A: ')[-1].split("\n\n")[0].replace('\n', '').replace('<|endoftext|>', '').strip()
 
 
 def get_spelling_accuracy(data: Dict[int, List[SpellingEvalDict]]) -> Dict[int, float]:
     """Takes in a dictionary of results, and returns the accuracy of the model on each grade."""
-    return {grade: sum([1 if d['answer'] in d['response'].upper() else 0 for d in data[grade]]) / len(data[grade]) for grade in data.keys()}
+    return {grade: sum([1 if d['answer'] in d['formatted_response'].upper() else 0 for d in data[grade]]) / len(data[grade]) for grade in data.keys()}
 
 
 # First letter eval
@@ -161,39 +165,40 @@ def create_first_letter_spelling_prompt(word: str, word_list: List[Tuple[str, st
     return prompt, word[0].upper()
 
 
-def format_first_letter_response(item):
+def format_first_letter_response(item: str) -> str:
     """Format the response to a first letter spelling prompt."""
     return format_full_spelling_response(item)[0]
 
 
 # What position is the letter in the word eval.
-INDEX_TO_POSITION = {0: 'first', 1: 'second', 2: 'third', 3: 'fourth', 4: 'fifth', 5: 'sixth', 6: 'seventh', 
+INDEX_TO_POSITION = {1: 'second', 2: 'third', 3: 'fourth', 4: 'fifth', 5: 'sixth', 6: 'seventh', 
                      7: 'eighth', 8: 'ninth', 9: 'tenth', 10: 'eleventh', 11: 'twelfth'}
 
 def create_position_of_letter_spelling_prompt(word: str, word_list: List[Tuple[str, str]], num_shots: int):
     """Takes in a word we want to spell, a list of words to sample from, and the number of shots.
     Tuple is of the form (word, spelling).
-    Creates a prompt that asks what position a letter of a word is in.
+    Creates a prompt that asks what position a letter of a word is in. Does not use the first letter.
     
     Returns the prompt and the answer to the prompt."""
     assert 0 <= num_shots < len(word_list), "Number of shots must be between 0 and the number of words in the list, minus the chosen word."
     word_list = [item for item in word_list if item[0] != word] # Remove any words that are the same as the word we want to spell.
+    word_list = [item for item in word_list if len(item[0]) > 1] # Remove any words that are too short.
     prompt = ''
     if num_shots > 0:
         samples = random.sample(word_list, num_shots)
         for sample in samples:
-            position = random.randint(0, len(sample[0])-1)
-            prompt += f"Q: What is the {INDEX_TO_POSITION[position]} letter of '{sample[0]}'? A: {sample[1][position].upper()}\n\n"
-    position = random.randint(0, len(word[0])-1)
+            position = random.randint(1, len(sample[0])-1)
+            prompt += f"Q: What is the {INDEX_TO_POSITION[position]} letter of '{sample[0]}'? A: {sample[0][position].upper()}\n\n"
+    position = 1 if len(word) == 2 else random.randint(1, len(word)-1)
     prompt += f"Q: What is the {INDEX_TO_POSITION[position]} letter of '{word}'? A:"
     return prompt, word[position].upper()
 
 
-def format_position_of_letter_response(item):
+def format_position_of_letter_response(item: str) -> str:
     """Format the response to a letter in word spelling prompt."""
     return format_full_spelling_response(item)[0]
 
 
 def get_position_of_letter_accuracy(data: Dict[int, List[SpellingEvalDict]]) -> Dict[int, float]:
     """Takes in a dictionary of results, and returns the accuracy of the model on each grade."""
-    return {grade: sum([1 if d['response'].startswith(d['answer']) else 0 for d in data[grade]]) / len(data[grade]) for grade in data.keys()}
+    return {grade: sum([1 if d['formatted_response'].startswith(d['answer']) else 0 for d in data[grade]]) / len(data[grade]) for grade in data.keys()}

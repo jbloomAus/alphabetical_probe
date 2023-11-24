@@ -1,6 +1,5 @@
 GRADE 1
 
-a
 all
 am*
 and*
@@ -40,7 +39,6 @@ him*
 his*
 home*
 hot
-I*
 if
 in*
 into*

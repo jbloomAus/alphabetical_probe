@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List
 
 import enum
 import re
@@ -6,11 +6,6 @@ import torch
 import tqdm
 import transformer_lens.utils as utils
 
-class EvalResponse(enum.Enum):
-    """Determines what response an eval should give. Data returns the raw data, accuracy returns the accuracy of the model's responses."""
-    DATA = 'data'
-    ACCURACY = 'accuracy'
-    
 class ModelType(enum.Enum):
     """Determines what type of model we should use, which determines how we run inference."""
     TRANSFORMER_LENS = 'TransformerLens'
@@ -23,9 +18,9 @@ def get_spelling(word: str, separator: str, case="upper"):
     return separator.join([char if case not in case_map else case_map[case](char) for char in word])
 
 
-def run_inference_on_model(model, model_type: ModelType, tokenizer, prompts: List[str], answers: List[str], batch_size: int):
+def run_inference_on_model(model, model_type: ModelType, tokenizer, prompts: List[str], answers: List[str], batch_size: int) -> List[Dict]:
     """Run inference on a model with a given tokenizer and device.
-    This function is designed to be agnostic, so it doesn't judge the answers for you.
+    This function is designed to be eval-agnostic, so it doesn't judge or format the answers for you.
     
     In order for the 'word' field to be populated in the returned data, the prompt must contain the word to be examined
     as the last item in single quotes. e.g, "Spell 'hello'." or "Spell 'goodbye'." We use a regex to search for it at the moment.
@@ -39,8 +34,8 @@ def run_inference_on_model(model, model_type: ModelType, tokenizer, prompts: Lis
     batch_size: How many prompts to pass in at once to the model
     
     Returns:
-    An object containing a list of {'prompt': prompt, 'answer': answer, 'response': response} dicts,
-    where response is the model's output as a string.
+    An object containing a list of {'word': str, 'prompt': str, 'answer': str, 'response': str, 'formatted_response': str} dicts,
+    where response is the model's output as a string. formatted_response = response, since this function is eval-agnostic.
     """
     num_batches = (len(prompts) + batch_size - 1) // batch_size
     data = []
@@ -58,7 +53,8 @@ def run_inference_on_model(model, model_type: ModelType, tokenizer, prompts: Lis
             data.append({'word': get_word_from_prompt(prompts[start_index + i]),
                         'prompt': prompts[start_index + i],
                          'answer': answers[start_index + i], 
-                         'response': response.replace(prompts[start_index + i], '')})
+                         'response': response,
+                         'formatted_response': response}) # formatted_response is populated by specific evaluation functions.
     
     return data
 
