@@ -1,8 +1,13 @@
 from typing import List
 
+import enum
 import torch
 import tqdm
 import transformer_lens.utils as utils
+
+class ModelType(enum.Enum):
+    TRANSFORMER_LENS = 'TransformerLens'
+    HUGGINGFACE = 'HuggingFace'
 
 
 def get_spelling(word: str, separator: str, case="upper"):
