@@ -1,4 +1,4 @@
-from src.evals.spelling_by_grade import *
+from evals.spelling_by_grade import *
 
 # Evals
 FULL_SPELLING_EVAL = SpellingEval(create_full_spelling_prompt, format_full_spelling_response, get_spelling_accuracy)

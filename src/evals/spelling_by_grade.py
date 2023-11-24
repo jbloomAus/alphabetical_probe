@@ -10,6 +10,11 @@ class SpellingEvalDict(TypedDict):
     answer: str
     response: str
     
+
+class EvalResponseDict(TypedDict):
+    data: Dict[int, List[SpellingEvalDict]]
+    accuracy: Dict[int, float]
+    
     
 # TODO: Consider an Eval generic class that can be extended for different evals.
 class SpellingEval:
@@ -41,23 +46,20 @@ class SpellingEval:
         return self.metric_function(data)
     
     def run_eval(self, model, model_type: ModelType, tokenizer, 
-                 return_type: EvalResponse,
                  word_list: List[Tuple[str, str]], 
-                 num_shots: int, batch_size: int=10) -> Dict[int, List[SpellingEvalDict]] | Dict[int, float]:
+                 num_shots: int, batch_size: int=10) -> EvalResponseDict:
         """Runs the eval on a given word list and number of shots.
         
         args:
         model: Contains the HuggingFace or TransformerLens model to run inference on.
         model_type: Determines what type of model we should use, which determines how we run inference.
         tokenizer: Contains the tokenizer to apply to prompts.
-        return_type: Determines what response the eval should return. Data returns the raw data, accuracy returns the accuracy of the model's responses.
         word_list: A list of tuples of the form (word, spelling) to run the eval on.
         num_shots: How many shots to give the model in evaluation.
         batch_size: How many prompts to pass in at once to the model.
         
         Returns:
-        If return_type is EvalResponse.DATA, returns an object containing a list of {'prompt': prompt, 'answer': answer, 'response': response} dicts.
-        If return_type is EvalResponse.ACCURACY, returns a dictionary of {grade: accuracy} dicts.
+        An EvalResponse Dict containing the data and accuracy of the eval.
         """
         data = {grade: [] for grade in word_list.keys()}
     
@@ -69,7 +71,9 @@ class SpellingEval:
                             'answer': item['answer'], 
                             'response': eval.format_response(item['response'])} 
                         for item in data[grade]]
-        return data if return_type == EvalResponse.DATA else eval.get_accuracy(data)
+            
+        response: EvalResponseDict = {'data': data, 'accuracy': eval.get_accuracy(data)}
+        return response
         
     
 
@@ -156,3 +160,15 @@ def create_letter_in_word_spelling_prompt(word: str, word_list: Tuple[str, str],
 def get_spelling_accuracy(data: Dict[int, List[SpellingEvalDict]]) -> Dict[int, float]:
     """Takes in a dictionary of results, and returns the accuracy of the model on each grade."""
     return {grade: sum([1 if d['response'].startswith(d['answer']) else 0 for d in data[grade]]) / len(data[grade]) for grade in data.keys()}
+
+
+def run_multiple_shots(shots: List[int], eval: SpellingEval, 
+                       model, model_type: ModelType, tokenizer, 
+                       word_list: List[Tuple[str, str]],
+                       response_type: EvalResponse,
+                       batch_size: int=10) -> Dict[int, List[SpellingEvalDict]] | Dict[int, float]:
+    """Run an eval for multiple few-shot parameters."""
+    shots = {shot: {} for shot in shots}
+    for shot in shots:
+        shots[shot] = eval.run_eval(model, model_type, tokenizer, response_type, word_list, shot, batch_size)
+    return shots

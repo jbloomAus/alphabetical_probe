@@ -22,7 +22,7 @@ def get_spelling(word: str, separator: str, case="upper"):
     return separator.join([char if case not in case_map else case_map[case](char) for char in word])
 
 
-def run_inference_on_model(model, model_type: str, tokenizer, prompts: List[str], answers: List[str], batch_size: int, device='cuda:0'):
+def run_inference_on_model(model, model_type: str, tokenizer, prompts: List[str], answers: List[str], batch_size: int):
     """Run inference on a model with a given tokenizer and device.
     This function is designed to be agnostic, so it doesn't judge the answers for you.
     
