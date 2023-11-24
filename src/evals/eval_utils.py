@@ -5,7 +5,13 @@ import torch
 import tqdm
 import transformer_lens.utils as utils
 
+class EvalResponse(enum.Enum):
+    """Determines what response an eval should give. Data returns the raw data, accuracy returns the accuracy of the model's responses."""
+    DATA = 'data'
+    ACCURACY = 'accuracy'
+    
 class ModelType(enum.Enum):
+    """Determines what type of model we should use, which determines how we run inference."""
     TRANSFORMER_LENS = 'TransformerLens'
     HUGGINGFACE = 'HuggingFace'
 
