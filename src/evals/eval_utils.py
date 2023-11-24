@@ -1,6 +1,7 @@
 from typing import List
 
 import enum
+import re
 import torch
 import tqdm
 import transformer_lens.utils as utils
@@ -22,12 +23,16 @@ def get_spelling(word: str, separator: str, case="upper"):
     return separator.join([char if case not in case_map else case_map[case](char) for char in word])
 
 
-def run_inference_on_model(model, model_type: str, tokenizer, prompts: List[str], answers: List[str], batch_size: int):
+def run_inference_on_model(model, model_type: ModelType, tokenizer, prompts: List[str], answers: List[str], batch_size: int):
     """Run inference on a model with a given tokenizer and device.
     This function is designed to be agnostic, so it doesn't judge the answers for you.
     
+    In order for the 'word' field to be populated in the returned data, the prompt must contain the word to be examined
+    as the last item in single quotes. e.g, "Spell 'hello'." or "Spell 'goodbye'." We use a regex to search for it at the moment.
+    
     Args:
     model: Contains the HuggingFace or TransformerLens model to run inference on.
+    model_type: Determines how we run inference. Either HuggingFace or TransformerLens.
     tokenizer: Contains the tokenizer to apply to prompts.
     prompts: A list of prompts to pass into the model.
     answers: A list of answers the model should output.
@@ -37,7 +42,6 @@ def run_inference_on_model(model, model_type: str, tokenizer, prompts: List[str]
     An object containing a list of {'prompt': prompt, 'answer': answer, 'response': response} dicts,
     where response is the model's output as a string.
     """
-    assert model_type in ['HuggingFace', 'TransformerLens']
     num_batches = (len(prompts) + batch_size - 1) // batch_size
     data = []
 
@@ -45,13 +49,14 @@ def run_inference_on_model(model, model_type: str, tokenizer, prompts: List[str]
         start_index = i * batch_size
         end_index = min(len(prompts), start_index + batch_size)
 
-        if model_type == 'HuggingFace':
+        if model_type == ModelType.HUGGINGFACE:
             responses = run_huggingface_inference(model, tokenizer, prompts[start_index:end_index], answers[start_index:end_index])
-        elif model_type == 'TransformerLens':
+        elif model_type == ModelType.TRANSFORMER_LENS:
             responses = run_transformerlens_inference(model, prompts[start_index:end_index], answers[start_index:end_index])
         
         for i, response in enumerate(responses):
-            data.append({'prompt': prompts[start_index + i],
+            data.append({'word': get_word_from_prompt(prompts[start_index + i]),
+                        'prompt': prompts[start_index + i],
                          'answer': answers[start_index + i], 
                          'response': response.replace(prompts[start_index + i], '')})
     
@@ -83,6 +88,12 @@ def run_transformerlens_inference(model, prompts: List[str], answers: List[str],
     tokens = torch.stack(tokens)
     outputs = model.generate(tokens, max_new_tokens=max_batch_tokens, temperature=temperature)
     return model.to_string(outputs)
+
+
+def get_word_from_prompt(prompt: str) -> str:
+    """Get the word the model is being asked to spell from a prompt."""
+    matches = re.findall(r"'([^']*)'", prompt) # Find all substrings in single quotes.
+    return matches[-1] if matches else '' # Then return the last one.
 
 
 def get_accuracy(outputs: List[str], answers: List[str]):
