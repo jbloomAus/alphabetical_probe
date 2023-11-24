@@ -1,3 +1,4 @@
+from evals.spelling_by_grade import SpellingEvalDict
 from typing import Dict, List
 
 import numpy as np
@@ -41,8 +42,8 @@ def nested_bar_graph(data: Dict[int, Dict[int, int]], shades: List[str], title='
     fig.show()
  
    
-def create_table(dataset: Dict[int, Dict], n_pairs=5):
-    """Create a color-coded table from a dataset of {grade: {'prompt': prompt, 'answer': answer, 'response': response}} dicts."""
+def create_table(dataset: Dict[int, SpellingEvalDict], n_pairs=5):
+    """Create a color-coded table from a dataset of {grade: SpellingEvalDict} dicts."""
     table, current_row, columns = [], [], []
     for i in range(n_pairs):
         columns.append(f"Expected {i+1}")
@@ -50,7 +51,7 @@ def create_table(dataset: Dict[int, Dict], n_pairs=5):
 
     for key in dataset:
         for item in dataset[key]:
-            current_row.extend([item['answer'], item['response']])
+            current_row.extend([item['answer'], item['formatted_response']])
             if len(current_row) == n_pairs * 2:  # Each row should have 6 columns
                 table.append(current_row)
                 current_row = []
