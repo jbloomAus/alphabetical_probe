@@ -1,7 +1,8 @@
-import random
+from evals.eval_utils import get_spelling, run_inference_on_model
 from typing import Dict, List, Tuple
 
-from evals.eval_utils import get_spelling, run_inference_on_model
+import random
+
 
 def prepare_grade_spelling_eval(filename: str, separator: str, case='upper'):
     """Takes a file with words separated by grades. 
@@ -40,7 +41,7 @@ def create_few_shot_grade_spelling_prompt(word: str, word_list: Tuple[str, str],
     return prompt
 
 
-def assess_model_on_words(model, tokenizer, word_list: List[Tuple[str, str]], num_shots: int, batch_size=10):
+def assess_model_on_words(model, model_type: str, tokenizer, word_list: List[Tuple[str, str]], num_shots: int, batch_size=10):
     """Takes in our list of words and how many shots we want to give the model.
     Creates prompts using those few shots, then runs inference on the model."""
     data = {grade: [] for grade in word_list.keys()}
@@ -48,7 +49,11 @@ def assess_model_on_words(model, tokenizer, word_list: List[Tuple[str, str]], nu
     for grade in word_list:
         print(f"Assessing Grade {grade}")
         prompts = [create_few_shot_grade_spelling_prompt(word[0], word_list[grade], num_shots) for word in word_list[grade]]
-        data[grade] = run_inference_on_model(model, tokenizer, prompts, [w[1] for w in word_list[grade]], batch_size)
+        data[grade] = run_inference_on_model(model, model_type, tokenizer, prompts, [w[1] for w in word_list[grade]], batch_size)
+        data[grade] = [{'prompt': item['prompt'], 
+                        'answer': item['answer'], 
+                        'response': item['response'].split('A: ')[-1].split("\n\n")[0].replace('\n', '').replace('<|endoftext|>', '')} 
+                       for item in data[grade]]
 
     return data
 
