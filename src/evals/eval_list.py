@@ -13,5 +13,13 @@ GET_POSITION_OF_LETTER_EVAL = GradeSpellingEval("Get Position of Letter In Word"
                                                 create_position_of_letter_spelling_prompt, 
                                                 format_position_of_letter_response, 
                                                 get_position_of_letter_accuracy)
+IS_LETTER_IN_WORD_EVAL = GradeSpellingEval("Is Letter in Word", 
+                                           create_is_letter_in_word_prompt, 
+                                           format_is_letter_in_word_response, 
+                                           get_is_letter_in_word_accuracy)
+SCRAMBLED_SPELLING_EVAL = GradeSpellingEval("Spell Scrambled Word", 
+                                            create_scrambled_spelling_prompt, 
+                                            format_full_spelling_response, 
+                                            get_spelling_accuracy)
 
-EVAL_LIST = [FULL_SPELLING_EVAL, GET_FIRST_LETTER_EVAL, GET_POSITION_OF_LETTER_EVAL]
+EVAL_LIST = [FULL_SPELLING_EVAL, GET_FIRST_LETTER_EVAL, GET_POSITION_OF_LETTER_EVAL, IS_LETTER_IN_WORD_EVAL, SCRAMBLED_SPELLING_EVAL]
