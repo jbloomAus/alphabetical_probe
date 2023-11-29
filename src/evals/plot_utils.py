@@ -66,6 +66,10 @@ def create_table(dataset: Dict[int, SpellingEvalDict], n_pairs=5):
     display(df)
 
 
-def style_answers(val, prev_val, true_color='lightgreen', false_color='lightcoral'):
-    color = true_color if val.strip() == prev_val.strip() else false_color
+def default_table_metric(expected, actual):
+    return expected.strip() == actual.strip()
+
+
+def style_answers(expected, actual, metric_fn=default_table_metric, true_color='lightgreen', false_color='lightcoral'):
+    color = true_color if metric_fn(expected, actual) else false_color
     return f'background-color: {color}'

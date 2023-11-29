@@ -92,11 +92,35 @@ class GradeSpellingEval:
         """Runs the eval on a given word list for multiple few-shot parameters.
         Same as run_eval but for multiple few-shot parameters.
         
-        Returns: A dictionary of {num_shots: EvalResponseDict}."""
+        Returns: A dictionary of {num_shots: SpellingEvalResponseDict}."""
         shots = {shot: {} for shot in shots}
         for shot in shots:
             shots[shot] = self.run_eval(model, model_type, tokenizer, word_list, shot, batch_size)
-        return shots    
+        return shots
+    
+    def run_eval_with_multiple_models(self, models: Dict[str, ModelType], tokenizer,
+                                      word_list: Dict[int, List[Tuple[str, str]]], 
+                                      shots: int, batch_size: int=10) -> Dict[str, SpellingEvalResponseDict]: 
+        """Runs the eval on a given word list for multiple few-shot parameters.
+        Same as run_eval but for multiple few-shot parameters.
+        
+        Returns: A dictionary of {model: SpellingEvalResponseDict}."""
+        model_data = {model: {} for model in models}
+        for model in models:
+            model_data[model] = self.run_eval(model, models[model], tokenizer, word_list, shots, batch_size)
+        return model_data
+    
+    def run_eval_with_multiple_models_and_multiple_shots(self, models: Dict[str, ModelType], tokenizer,
+                                                         word_list: Dict[int, List[Tuple[str, str]]], 
+                                                         shots: List[int], batch_size: int=10) -> Dict[str, Dict[int, SpellingEvalResponseDict]]: 
+        """Runs the eval on a given word list for multiple few-shot parameters.
+        Same as run_eval but for multiple few-shot parameters.
+        
+        Returns: A dictionary of {model: {shots: SpellingEvalResponseDict}}."""
+        model_data = {model: {} for model in models}
+        for model in models:
+            model_data[model] = self.run_eval_with_multiple_shots(model, models[model], tokenizer, word_list, shots, batch_size)
+        return model_data
         
         
 def prepare_grade_spelling_eval(filename: str, separator: str, case='upper'):
@@ -138,7 +162,6 @@ def create_full_spelling_prompt(word: str, word_list: List[Tuple[str, str]], num
             prompt += f"Q: How do you spell '{sample[0]}'? A: {sample[1]}\n\n"
     prompt += f"Q: How do you spell '{word}'? A:"
     return prompt, answer
-
 
 def format_full_spelling_response(item: str) -> str:
     """Format the response to a full spelling prompt."""

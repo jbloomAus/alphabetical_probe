@@ -90,9 +90,3 @@ def get_word_from_prompt(prompt: str) -> str:
     """Get the word the model is being asked to spell from a prompt."""
     matches = re.findall(r"'([^']*)'", prompt) # Find all substrings in single quotes.
     return matches[-1] if matches else '' # Then return the last one.
-
-
-def get_accuracy(outputs: List[str], answers: List[str]):
-    """Get the accuracy of a model's outputs compared to a list of answers.
-    Works as a generic accuracy check if you're not looking for something in particular."""
-    return sum([1 if outputs[i] == answers[i] else 0 for i in range(len(outputs))]) / len(outputs)
