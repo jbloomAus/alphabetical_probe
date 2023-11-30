@@ -8,6 +8,7 @@ class SpellingEvalDict(TypedDict):
     """Defines the structure of a dictionary containing the data for a spelling eval prompt.
     Contains the word, prompt, answer, raw response, and formatted response."""
     word: str
+    tokens: List[str]
     prompt: str
     answer: str
     response: str
@@ -320,9 +321,10 @@ def create_next_letter_spelling_prompt(word: str, word_list: List[Tuple[str, str
             prompt += f"Q: How do you spell '{sample[0]}'? A: {sample[1]}\n\n"
     position = 1 if len(word) == 2 else random.randint(1, len(word)-1)
     prompt += f"Q: How do you spell '{word}? A: {get_spelling(word[:position], '-')}-'"
-    return prompt, word[position+1].upper()
+    return prompt, word[position].upper()
 
 def format_next_letter_response(item: str) -> str:
     """Format the response to a next letter spelling prompt."""
-    return format_full_spelling_response(item)[0]
+    response = format_full_spelling_response(item)
+    return response.replace('-', '')[-1]
 

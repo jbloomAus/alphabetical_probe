@@ -51,12 +51,24 @@ def run_inference_on_model(model, model_type: ModelType, tokenizer, prompts: Lis
         
         for i, response in enumerate(responses):
             data.append({'word': get_word_from_prompt(prompts[start_index + i]),
-                        'prompt': prompts[start_index + i],
+                         'tokens': tokenize_prompt(model, tokenizer, model_type, prompts[start_index + i]),
+                         'prompt': prompts[start_index + i],
                          'answer': answers[start_index + i], 
                          'response': response,
                          'formatted_response': response}) # formatted_response is populated by specific evaluation functions.
     
     return data
+
+
+def tokenize_prompt(model, tokenizer, model_type: ModelType, prompt: str) -> List[str]:
+    """Turn a prompt into a list of tokens."""
+    if model_type == ModelType.HUGGINGFACE:
+        return tokenizer.encode(prompt, add_special_tokens=False)
+    elif model_type == ModelType.TRANSFORMER_LENS:
+        return model.to_tokens(prompt)
+    else:
+        raise ValueError(f"Invalid model type: {model_type}")
+
 
 def run_huggingface_inference(model, tokenizer, prompts: List[str], answers: List[str], temperature=0.0):
     """Pass in a list of prompts with a HuggingFace model, and get a list of responses back."""
