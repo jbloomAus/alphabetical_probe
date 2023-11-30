@@ -12,7 +12,7 @@ class SpellingEvalDict(TypedDict):
     answer: str
     response: str
     formatted_response: str
-    
+   
 
 class SpellingEvalResponseDict(TypedDict):
     """Defines the structure of a dictionary containing the data and accuracy for a spelling eval."""
@@ -22,7 +22,7 @@ class SpellingEvalResponseDict(TypedDict):
 SpellingData = Dict[int, List[SpellingEvalDict]] # Dictionary of spelling eval data by grade.
     
 # word=str, word_list = List[Tuple[str, str]], num_shots=int. Returns Tuple[str, str] as (prompt, answer).
-PromptFunctionType = Callable[[str, List[Tuple[str, str]], int], Tuple[str, str]]  
+PromptFunctionType = Callable[[str, List[Tuple[str, str]], int], Tuple[str, str]] 
 
 class GradeSpellingEval:
     """An object that contains the functions needed to run an eval on spelling by grade.
@@ -95,6 +95,7 @@ class GradeSpellingEval:
         Returns: A dictionary of {num_shots: SpellingEvalResponseDict}."""
         shots = {shot: {} for shot in shots}
         for shot in shots:
+            print(f"Running eval for {shot} shots")
             shots[shot] = self.run_eval(model, model_type, tokenizer, word_list, shot, batch_size)
         return shots
     
@@ -107,6 +108,7 @@ class GradeSpellingEval:
         Returns: A dictionary of {model: SpellingEvalResponseDict}."""
         model_data = {model: {} for model in models}
         for model in models:
+            print(f"Running eval for {model}")
             model_data[model] = self.run_eval(model, models[model], tokenizer, word_list, shots, batch_size)
         return model_data
     
@@ -119,6 +121,7 @@ class GradeSpellingEval:
         Returns: A dictionary of {model: {shots: SpellingEvalResponseDict}}."""
         model_data = {model: {} for model in models}
         for model in models:
+            print(f"Running eval for {model}")
             model_data[model] = self.run_eval_with_multiple_shots(model, models[model], tokenizer, word_list, shots, batch_size)
         return model_data
         
@@ -194,6 +197,11 @@ def create_first_letter_spelling_prompt(word: str, word_list: List[Tuple[str, st
 def format_first_letter_response(item: str) -> str:
     """Format the response to a first letter spelling prompt."""
     return format_full_spelling_response(item)[0]
+
+
+def get_first_letter_accuracy(data: Dict[int, List[SpellingEvalDict]]) -> Dict[int, float]:
+    """Determine the accuracy of the model on each grade for the first letter eval."""
+    return {grade: sum([1 if d['answer'].upper()[0] == d['formatted_response'].upper()[0] else 0 for d in data[grade]]) / len(data[grade]) for grade in data.keys()}
 
 
 # What position is the letter in the word eval.
@@ -293,3 +301,28 @@ def scramble_word(word: str) -> str:
     """Scramble a word by shuffling two of the letters."""
     position = random.randint(1, len(word)-1)
     return word[:position-1] + word[position] + word[position-1] + word[position+1:]
+
+# Next letter eval
+def create_next_letter_spelling_prompt(word: str, word_list: List[Tuple[str, str]], num_shots: int):
+    """Takes in a word we want to spell, a list of words to sample from, and the number of shots.
+    Tuple is of the form (word, spelling).
+    Creates a prompt that asks for the next letter in a word.
+    
+    Returns the prompt and the answer to the prompt."""
+    assert 0 <= num_shots < len(word_list), "Number of shots must be between 0 and the number of words in the list, minus the chosen word."
+    word_list = [item for item in word_list if item[0] != word] # Remove any words that are the same as the word we want to spell.
+    word_list = [item for item in word_list if len(item[0]) > 1] # Remove any words that are too short.
+    prompt = ''
+    if num_shots > 0:
+        samples = random.sample(word_list, num_shots)
+        for sample in samples:
+            position = random.randint(1, len(sample[0])-1)
+            prompt += f"Q: How do you spell '{sample[0]}'? A: {sample[1]}\n\n"
+    position = 1 if len(word) == 2 else random.randint(1, len(word)-1)
+    prompt += f"Q: How do you spell '{word}? A: {get_spelling(word[:position], '-')}-'"
+    return prompt, word[position+1].upper()
+
+def format_next_letter_response(item: str) -> str:
+    """Format the response to a next letter spelling prompt."""
+    return format_full_spelling_response(item)[0]
+

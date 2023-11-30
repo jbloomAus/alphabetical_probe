@@ -8,7 +8,7 @@ FULL_SPELLING_EVAL = GradeSpellingEval("Spell Full Word",
 GET_FIRST_LETTER_EVAL = GradeSpellingEval("Spell First Letter", 
                                           create_first_letter_spelling_prompt, 
                                           format_first_letter_response, 
-                                          get_spelling_accuracy)
+                                          get_first_letter_accuracy)
 GET_POSITION_OF_LETTER_EVAL = GradeSpellingEval("Get Position of Letter In Word", 
                                                 create_position_of_letter_spelling_prompt, 
                                                 format_position_of_letter_response, 
@@ -21,5 +21,10 @@ SCRAMBLED_SPELLING_EVAL = GradeSpellingEval("Spell Scrambled Word",
                                             create_scrambled_spelling_prompt, 
                                             format_full_spelling_response, 
                                             get_spelling_accuracy)
+GET_NEXT_LETTER_EVAL = GradeSpellingEval("Get Next Letter",
+                                         create_next_letter_spelling_prompt,
+                                         format_next_letter_response,
+                                         get_first_letter_accuracy)
 
-EVAL_LIST = [FULL_SPELLING_EVAL, GET_FIRST_LETTER_EVAL, GET_POSITION_OF_LETTER_EVAL, IS_LETTER_IN_WORD_EVAL, SCRAMBLED_SPELLING_EVAL]
+EVAL_LIST = [FULL_SPELLING_EVAL, GET_FIRST_LETTER_EVAL, GET_POSITION_OF_LETTER_EVAL, 
+             IS_LETTER_IN_WORD_EVAL, SCRAMBLED_SPELLING_EVAL, GET_NEXT_LETTER_EVAL]
