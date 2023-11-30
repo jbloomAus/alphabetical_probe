@@ -1,3 +1,4 @@
+from transformers import AutoModelForCausalLM, AutoTokenizer, GPT2LMHeadModel, GPT2Tokenizer
 from typing import Dict, List
 
 import enum
@@ -12,13 +13,19 @@ class ModelType(enum.Enum):
     HUGGINGFACE = 'HuggingFace'
 
 
+def noop(iterable, *args, **kwargs):
+    """Null Object Pattern to use when we don't want to display a progress bar."""
+    return iterable
+
+
 def get_spelling(word: str, separator: str, case="upper"):
     """Get the spelling of a word with a given separator and case. e.g, hello -> H-E-L-L-O"""
     case_map = {"upper": lambda x: x.upper(), "lower": lambda x: x.lower(), "original": lambda x: x}
     return separator.join([char if case not in case_map else case_map[case](char) for char in word])
 
 
-def run_inference_on_model(model, model_type: ModelType, tokenizer, prompts: List[str], answers: List[str], batch_size: int) -> List[Dict]:
+def run_inference_on_model(model, model_type: ModelType, tokenizer, prompts: List[str], 
+                           answers: List[str], batch_size: int, should_tqdm=True) -> List[Dict]:
     """Run inference on a model with a given tokenizer and device.
     This function is designed to be eval-agnostic, so it doesn't judge or format the answers for you.
     
@@ -32,6 +39,7 @@ def run_inference_on_model(model, model_type: ModelType, tokenizer, prompts: Lis
     prompts: A list of prompts to pass into the model.
     answers: A list of answers the model should output.
     batch_size: How many prompts to pass in at once to the model
+    should_tqdm: A boolean to see if we should display a progress bar.
     
     Returns:
     An object containing a list of {'word': str, 'prompt': str, 'answer': str, 'response': str, 'formatted_response': str} dicts,
@@ -40,7 +48,8 @@ def run_inference_on_model(model, model_type: ModelType, tokenizer, prompts: Lis
     num_batches = (len(prompts) + batch_size - 1) // batch_size
     data = []
 
-    for i in tqdm.tqdm(range(num_batches)):
+    progress = tqdm.tqdm if should_tqdm else noop
+    for i in progress(range(num_batches)):
         start_index = i * batch_size
         end_index = min(len(prompts), start_index + batch_size)
 
@@ -102,3 +111,13 @@ def get_word_from_prompt(prompt: str) -> str:
     """Get the word the model is being asked to spell from a prompt."""
     matches = re.findall(r"'([^']*)'", prompt) # Find all substrings in single quotes.
     return matches[-1] if matches else '' # Then return the last one.
+
+
+def load_model(name):
+    if name.startswith('gpt2'):
+        model = GPT2LMHeadModel.from_pretrained(name)
+        tokenizer = GPT2Tokenizer.from_pretrained(name)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(name)
+        tokenizer = AutoTokenizer.from_pretrained(name)
+    return model, tokenizer

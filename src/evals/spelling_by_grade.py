@@ -1,8 +1,12 @@
-from evals.eval_utils import get_spelling, run_inference_on_model, ModelType
+from evals.eval_utils import get_spelling, load_model, run_inference_on_model, ModelType
 from typing import Callable, Dict, List, Tuple, TypedDict
 
+import json
+import os
 import random
 import string
+import tqdm
+import wandb
 
 class SpellingEvalDict(TypedDict):
     """Defines the structure of a dictionary containing the data for a spelling eval prompt.
@@ -52,7 +56,7 @@ class GradeSpellingEval:
     
     def run_eval(self, model, model_type: ModelType, tokenizer, 
                  word_list: Dict[int, List[Tuple[str, str]]], 
-                 num_shots: int, batch_size: int=10) -> SpellingEvalResponseDict:
+                 num_shots: int, batch_size: int=10, should_tqdm: bool=True) -> SpellingEvalResponseDict:
         """Runs the eval on a given word list and number of shots.
         
         For each grade in the word list:
@@ -70,6 +74,7 @@ class GradeSpellingEval:
         word_list: A list of tuples of the form (word, spelling) to run the eval on, separated by grade.
         num_shots: How many shots to give the model in evaluation.
         batch_size: How many prompts to pass in at once to the model.
+        should_tqdm: A boolean to see if we should display a progress bar.
         
         Returns:
         A SpellingEvalResponseDict containing the data and accuracy of the eval.
@@ -80,7 +85,7 @@ class GradeSpellingEval:
             print(f"Assessing Grade {grade}")
             word_list[grade] = [item for item in word_list[grade] if self.filter_function(item)]
             prompts, answers = zip(*[self.prompt_function(word[0], word_list[grade], num_shots) for word in word_list[grade]])
-            data[grade] = run_inference_on_model(model, model_type, tokenizer, prompts, answers, batch_size)
+            data[grade] = run_inference_on_model(model, model_type, tokenizer, prompts, answers, batch_size, should_tqdm)
             for item in data[grade]:
                 item['formatted_response'] = self.format_response_function(item['response'])
  
@@ -89,7 +94,7 @@ class GradeSpellingEval:
     
     def run_eval_with_multiple_shots(self, model, model_type: ModelType, tokenizer, 
                                      word_list: Dict[int, List[Tuple[str, str]]], 
-                                     shots: List[int], batch_size: int=10) -> Dict[int, SpellingEvalResponseDict]:
+                                     shots: List[int], batch_size: int=10, should_tqdm: bool=True) -> Dict[int, SpellingEvalResponseDict]:
         """Runs the eval on a given word list for multiple few-shot parameters.
         Same as run_eval but for multiple few-shot parameters.
         
@@ -97,12 +102,12 @@ class GradeSpellingEval:
         shots = {shot: {} for shot in shots}
         for shot in shots:
             print(f"Running eval for {shot} shots")
-            shots[shot] = self.run_eval(model, model_type, tokenizer, word_list, shot, batch_size)
+            shots[shot] = self.run_eval(model, model_type, tokenizer, word_list, shot, batch_size, should_tqdm)
         return shots
     
     def run_eval_with_multiple_models(self, models: Dict[str, ModelType], tokenizer,
                                       word_list: Dict[int, List[Tuple[str, str]]], 
-                                      shots: int, batch_size: int=10) -> Dict[str, SpellingEvalResponseDict]: 
+                                      shots: int, batch_size: int=10, should_tqdm=True) -> Dict[str, SpellingEvalResponseDict]: 
         """Runs the eval on a given word list for multiple few-shot parameters.
         Same as run_eval but for multiple few-shot parameters.
         
@@ -110,12 +115,13 @@ class GradeSpellingEval:
         model_data = {model: {} for model in models}
         for model in models:
             print(f"Running eval for {model}")
-            model_data[model] = self.run_eval(model, models[model], tokenizer, word_list, shots, batch_size)
+            model_data[model] = self.run_eval(model, models[model], tokenizer, word_list, shots, batch_size, should_tqdm)
         return model_data
     
     def run_eval_with_multiple_models_and_multiple_shots(self, models: Dict[str, ModelType], tokenizer,
                                                          word_list: Dict[int, List[Tuple[str, str]]], 
-                                                         shots: List[int], batch_size: int=10) -> Dict[str, Dict[int, SpellingEvalResponseDict]]: 
+                                                         shots: List[int], batch_size: int=10,
+                                                         should_tqdm=False) -> Dict[str, Dict[int, SpellingEvalResponseDict]]: 
         """Runs the eval on a given word list for multiple few-shot parameters.
         Same as run_eval but for multiple few-shot parameters.
         
@@ -123,8 +129,66 @@ class GradeSpellingEval:
         model_data = {model: {} for model in models}
         for model in models:
             print(f"Running eval for {model}")
-            model_data[model] = self.run_eval_with_multiple_shots(model, models[model], tokenizer, word_list, shots, batch_size)
+            model_data[model] = self.run_eval_with_multiple_shots(model, models[model], tokenizer, word_list, shots, batch_size, should_tqdm)
         return model_data
+    
+
+def run_evaluation_set(filename: str, model_list: List[str], eval_list: List[GradeSpellingEval], 
+                  shots: int | List[int], words: Dict[int, List[str]], 
+                  should_update: bool, should_wandb: bool, device='cuda:0') -> Dict[str, Dict[str, Dict[int, SpellingEvalResponseDict]]]
+    """Run a full evaluation across multiple models, evaluations, and optionally number of shots.
+    
+    Currently only supports HuggingFace models.
+    
+    args:
+    filename: The name of the file to save the results to.
+    model_list: A list of model names to run inference on.
+    eval_list: A list of evaluations to run.
+    shots: The number of shots to run the evaluations on.
+    words: A list of words to run the evaluations on.
+    should_update: A boolean to see if we should update the file if it already exists.
+    should_wandb: A boolean to see if we should log the results to wandb.
+    device: The device to run inference on.
+    
+    Returns: 
+    
+    A dictionary of {model: {eval: {shots: SpellingEvalResponseDict}}}."""
+    
+    
+    if os.path.exists(filename) and should_update is False:
+        with open(filename, 'r') as f:
+            eval_results = json.load(f)
+    else:
+        eval_results = {}
+        total_iterations = len(model_list) * len(eval_list)
+        with tqdm.tqdm(total=total_iterations, desc="Overall Progress") as pbar:
+            for model_name in model_list:
+                print(f"Running {model_name}")
+                model, tokenizer = load_model(model_name)
+                model.config.pad_token_id = tokenizer.eos_token_id # Prevent lots of info messages telling us it's doing this every prompt.
+                tokenizer.pad_token = tokenizer.eos_token
+                tokenizer.padding_side = 'left'
+                model.to(device)
+                model_results = {}
+                
+                for eval in eval_list:
+                    print(f"Running {eval.name}")
+                    shots_iterable = shots if isinstance(shots, list) else [shots]
+                    model_results[eval.name] = eval.run_eval_with_multiple_shots(model, ModelType.HUGGINGFACE, tokenizer, words, shots_iterable, should_tqdm=False)
+                    pbar.update(1)
+                    
+                eval_results[model_name] = model_results
+                
+        with open(filename, 'w') as f:
+            json.dump(eval_results, f) 
+
+    if should_wandb:
+        run = wandb.init(project="grade_spelling_eval", job_type="add-dataset")
+        artifact = wandb.Artifact(name="full_eval", type="eval")
+        artifact.add_dir(local_path="./grade_spelling_eval_results.json")  # Add dataset directory to artifact
+        run.log_artifact(artifact)  # Logs the artifact version "my_data:v0"
+
+    return eval_results
         
         
 def prepare_grade_spelling_eval(filename: str, separator: str, case='upper'):
