@@ -133,22 +133,21 @@ class GradeSpellingEval:
         return model_data
     
 
-def run_evaluation_set(filename: str, model_list: List[str], eval_list: List[GradeSpellingEval], 
+def run_evaluation_set(filename: str, model_name: str, eval_list: List[GradeSpellingEval], 
                   shots: int | List[int], words: Dict[int, List[str]], 
-                  should_update: bool, should_wandb: bool, device='cuda:0') -> Dict[str, Dict[str, Dict[int, SpellingEvalResponseDict]]]:
-    """Run a full evaluation across multiple models, evaluations, and optionally number of shots.
+                  should_update: bool, should_wandb: bool) -> Dict[str, Dict[int, SpellingEvalResponseDict]]:
+    """Run a full evaluation across multiple evaluations, and optionally number of shots.
     
     Currently only supports HuggingFace models.
     
     args:
     filename: The name of the file to save the results to.
-    model_list: A list of model names to run inference on.
+    model: Name of the model to run inference on.
     eval_list: A list of evaluations to run.
     shots: The number of shots to run the evaluations on.
     words: A list of words to run the evaluations on.
     should_update: A boolean to see if we should update the file if it already exists.
     should_wandb: A boolean to see if we should log the results to wandb.
-    device: The device to run inference on.
     
     Returns: 
     
@@ -160,28 +159,41 @@ def run_evaluation_set(filename: str, model_list: List[str], eval_list: List[Gra
             eval_results = json.load(f)
     else:
         eval_results = {}
-        total_iterations = len(model_list) * len(eval_list)
+        total_iterations = len(eval_list)
         with tqdm.tqdm(total=total_iterations, desc="Overall Progress") as pbar:
-            for model_name in model_list:
-                print(f"Running {model_name}")
-                model, tokenizer = load_huggingface_model(model_name)
-                model_results = {}
-                
-                for eval in eval_list:
-                    print(f"Running {eval.name}")
-                    shots_iterable = shots if isinstance(shots, list) else [shots]
-                    model_results[eval.name] = eval.run_eval_with_multiple_shots(model, ModelType.HUGGINGFACE, tokenizer, words, shots_iterable, should_tqdm=False)
-                    pbar.update(1)
-                    
-                eval_results[model_name] = model_results
-                
+            model, tokenizer = load_huggingface_model(model_name)
+            
+            for eval in eval_list:
+                print(f"Running {eval.name}")
+                shots_iterable = shots if isinstance(shots, list) else [shots]
+                eval_results[eval.name] = eval.run_eval_with_multiple_shots(model, ModelType.HUGGINGFACE, tokenizer, words, shots_iterable, should_tqdm=False)
+                pbar.update(1)
+     
         with open(filename, 'w') as f:
             json.dump(eval_results, f) 
-
+            
     if should_wandb:
+        print("Creating WandB artifact")
         dir_name = '/'.join(filename.split('/')[:-1]) # Create a directory name by removing the file name.
         create_wandb_artifact("grade_spelling_eval", "full_eval", dir_name)
 
+    return eval_results
+
+
+def run_multiple_model_evaluation_set(filename_prefix: str, models: List[str], 
+                                      eval_list: List[GradeSpellingEval], shots: int | List[int], 
+                                      words: Dict[int, List[str]], should_update: bool, 
+                                      should_wandb: bool) -> Dict[str, Dict[str, Dict[int, SpellingEvalResponseDict]]]:
+    """Run an evaluation set across multiple models. Same as run_evaluation_set, but creates separate files for each
+    model and saves the directly to WandB at the end if should_wandb."""
+    eval_results = {}
+    for model in models:
+        eval_results[model] = run_evaluation_set(f"{filename_prefix}_{model}.json", model, eval_list, shots, words, should_update, False)
+    
+    if should_wandb:
+        dir_name = '/'.join(filename_prefix.split('/')[:-1]) # Create a directory name by removing the file name.
+        create_wandb_artifact("grade_spelling_eval", "full_eval", dir_name)
+    
     return eval_results
         
         
