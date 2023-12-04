@@ -144,8 +144,8 @@ def run_evaluation_set(filename: str, model_name: str, eval_list: List[GradeSpel
     filename: The name of the file to save the results to.
     model: Name of the model to run inference on.
     eval_list: A list of evaluations to run.
-    shots: The number of shots to run the evaluations on.
     words: A list of words to run the evaluations on.
+    shots: The number of shots to run the evaluations on.
     should_update: A boolean to see if we should update the file if it already exists.
     should_wandb: A boolean to see if we should log the results to wandb.
     
@@ -188,7 +188,7 @@ def run_multiple_model_evaluation_set(filename_prefix: str, models: List[str],
     model and saves the directly to WandB at the end if should_wandb."""
     eval_results = {}
     for model in models:
-        eval_results[model] = run_evaluation_set(f"{filename_prefix}_{model}.json", model, eval_list, shots, words, should_update, False)
+        eval_results[model] = run_evaluation_set(f"{filename_prefix}_{model}.json", model, eval_list, words, shots, should_update, False)
     
     if should_wandb:
         dir_name = '/'.join(filename_prefix.split('/')[:-1]) # Create a directory name by removing the file name.
