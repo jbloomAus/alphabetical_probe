@@ -1,4 +1,4 @@
-from evals.eval_utils import get_spelling, load_model, run_inference_on_model, ModelType
+from evals.eval_utils import create_wandb, get_spelling, load_model, run_inference_on_model, ModelType
 from typing import Callable, Dict, List, Tuple, TypedDict
 
 import json
@@ -135,7 +135,7 @@ class GradeSpellingEval:
 
 def run_evaluation_set(filename: str, model_list: List[str], eval_list: List[GradeSpellingEval], 
                   shots: int | List[int], words: Dict[int, List[str]], 
-                  should_update: bool, should_wandb: bool, device='cuda:0') -> Dict[str, Dict[str, Dict[int, SpellingEvalResponseDict]]]
+                  should_update: bool, should_wandb: bool, device='cuda:0') -> Dict[str, Dict[str, Dict[int, SpellingEvalResponseDict]]]:
     """Run a full evaluation across multiple models, evaluations, and optionally number of shots.
     
     Currently only supports HuggingFace models.
@@ -183,10 +183,7 @@ def run_evaluation_set(filename: str, model_list: List[str], eval_list: List[Gra
             json.dump(eval_results, f) 
 
     if should_wandb:
-        run = wandb.init(project="grade_spelling_eval", job_type="add-dataset")
-        artifact = wandb.Artifact(name="full_eval", type="eval")
-        artifact.add_dir(local_path="./grade_spelling_eval_results.json")  # Add dataset directory to artifact
-        run.log_artifact(artifact)  # Logs the artifact version "my_data:v0"
+        create_wandb("grade_spelling_eval", "full_eval", filename)
 
     return eval_results
         
