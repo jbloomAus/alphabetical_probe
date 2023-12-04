@@ -52,7 +52,7 @@ def create_table(dataset: Dict[int, SpellingEvalDict], n_pairs=5):
     for key in dataset:
         for item in dataset[key]:
             current_row.extend([item['answer'], item['formatted_response']])
-            if len(current_row) == n_pairs * 2:  # Each row should have 6 columns
+            if len(current_row) == n_pairs * 2:  # Each row should have 2 * n_pairs columns
                 table.append(current_row)
                 current_row = []
 

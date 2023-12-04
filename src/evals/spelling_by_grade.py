@@ -1,4 +1,4 @@
-from evals.eval_utils import create_wandb, get_spelling, load_model, run_inference_on_model, ModelType
+from evals.eval_utils import create_wandb_artifact, get_spelling, load_huggingface_model, run_inference_on_model, ModelType
 from typing import Callable, Dict, List, Tuple, TypedDict
 
 import json
@@ -164,11 +164,7 @@ def run_evaluation_set(filename: str, model_list: List[str], eval_list: List[Gra
         with tqdm.tqdm(total=total_iterations, desc="Overall Progress") as pbar:
             for model_name in model_list:
                 print(f"Running {model_name}")
-                model, tokenizer = load_model(model_name)
-                model.config.pad_token_id = tokenizer.eos_token_id # Prevent lots of info messages telling us it's doing this every prompt.
-                tokenizer.pad_token = tokenizer.eos_token
-                tokenizer.padding_side = 'left'
-                model.to(device)
+                model, tokenizer = load_huggingface_model(model_name)
                 model_results = {}
                 
                 for eval in eval_list:
@@ -183,7 +179,8 @@ def run_evaluation_set(filename: str, model_list: List[str], eval_list: List[Gra
             json.dump(eval_results, f) 
 
     if should_wandb:
-        create_wandb("grade_spelling_eval", "full_eval", filename)
+        dir_name = '/'.join(filename.split('/')[:-1]) # Create a directory name by removing the file name.
+        create_wandb_artifact("grade_spelling_eval", "full_eval", dir_name)
 
     return eval_results
         

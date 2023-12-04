@@ -1,4 +1,5 @@
 from transformers import AutoModelForCausalLM, AutoTokenizer, GPT2LMHeadModel, GPT2Tokenizer
+from transformer_lens import HookedTransformer
 from typing import Dict, List
 
 import enum
@@ -114,7 +115,7 @@ def get_word_from_prompt(prompt: str) -> str:
     return matches[-1] if matches else '' # Then return the last one.
 
 
-def load_huggingface_model(name: str):
+def load_huggingface_model(name: str, device: str='cuda:0'):
     """Load a model and tokenizer from a HuggingFace model name."""
     if name.startswith('gpt2'):
         model = GPT2LMHeadModel.from_pretrained(name)
@@ -122,11 +123,22 @@ def load_huggingface_model(name: str):
     else:
         model = AutoModelForCausalLM.from_pretrained(name)
         tokenizer = AutoTokenizer.from_pretrained(name)
+    model.config.pad_token_id = tokenizer.eos_token_id # Prevent lots of info messages telling us it's doing this every prompt.
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = 'left'
+    model.to(device)
     return model, tokenizer
 
-def create_wandb(project_name: str, artifact_name: str, eval_filename: str):
+
+def load_transformerlens_model(name: str):
+    """Load a model and tokenizer from a TransformerLens model name."""
+    model = HookedTransformer.from_pretrained(name)
+    return model, model.tokenizer
+
+
+def create_wandb_artifact(project_name: str, artifact_name: str, eval_filename: str):
     """Logs evaluation data to wandb"""
     run = wandb.init(project=project_name, job_type="add-dataset")
     artifact = wandb.Artifact(name=artifact_name, type="eval")
-    artifact.add_dir(local_path=f"./{eval_filename}")  # Add dataset directory to artifact
+    artifact.add_dir(local_path=eval_filename)  # Add dataset directory to artifact
     run.log_artifact(artifact)  # Logs the artifact version "my_data:v0"
