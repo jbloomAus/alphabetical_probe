@@ -134,7 +134,7 @@ class GradeSpellingEval:
     
 
 def run_evaluation_set(filename: str, model_name: str, eval_list: List[GradeSpellingEval], 
-                  shots: int | List[int], words: Dict[int, List[str]], 
+                  words: Dict[int, List[str]], shots: int | List[int],
                   should_update: bool, should_wandb: bool) -> Dict[str, Dict[int, SpellingEvalResponseDict]]:
     """Run a full evaluation across multiple evaluations, and optionally number of shots.
     
@@ -181,8 +181,8 @@ def run_evaluation_set(filename: str, model_name: str, eval_list: List[GradeSpel
 
 
 def run_multiple_model_evaluation_set(filename_prefix: str, models: List[str], 
-                                      eval_list: List[GradeSpellingEval], shots: int | List[int], 
-                                      words: Dict[int, List[str]], should_update: bool, 
+                                      eval_list: List[GradeSpellingEval], words: Dict[int, List[str]], 
+                                      shots: int | List[int], should_update: bool, 
                                       should_wandb: bool) -> Dict[str, Dict[str, Dict[int, SpellingEvalResponseDict]]]:
     """Run an evaluation set across multiple models. Same as run_evaluation_set, but creates separate files for each
     model and saves the directly to WandB at the end if should_wandb."""

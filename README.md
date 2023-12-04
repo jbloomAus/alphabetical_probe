@@ -26,3 +26,17 @@ python -m ipykernel install --user --name=gpu
 ```
 
 To run a notebook, you'll then need to navigate to the notebook, open it, and change the kernel to 'gpu' in the upper-right hand corner. Then you should just be able to run it as is!
+
+## Evals
+
+`eval_list.py` in src/evals contains a list of evaluations, which also links to the `GradeSpellingEval` class that constructs them. To make a new evaluation, all you need to do is build your functions according to this class and add the evaluation to eval_list.py.
+
+Instructions for how to load, save, and run evals can be found in `Eval_Demo.ipynb` under src/evals/notebooks.
+
+## Probing
+
+TBD
+
+## Analysis
+
+TBD
