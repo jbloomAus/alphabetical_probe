@@ -1,3 +1,5 @@
+from transformers import AutoModelForCausalLM, AutoTokenizer, GPT2LMHeadModel, GPT2Tokenizer
+from transformer_lens import HookedTransformer
 from typing import Dict, List
 
 import enum
@@ -5,11 +7,17 @@ import re
 import torch
 import tqdm
 import transformer_lens.utils as utils
+import wandb
 
 class ModelType(enum.Enum):
     """Determines what type of model we should use, which determines how we run inference."""
     TRANSFORMER_LENS = 'TransformerLens'
     HUGGINGFACE = 'HuggingFace'
+
+
+def noop(iterable, *args, **kwargs):
+    """Null Object Pattern to use when we don't want to display a progress bar."""
+    return iterable
 
 
 def get_spelling(word: str, separator: str, case="upper"):
@@ -18,7 +26,8 @@ def get_spelling(word: str, separator: str, case="upper"):
     return separator.join([char if case not in case_map else case_map[case](char) for char in word])
 
 
-def run_inference_on_model(model, model_type: ModelType, tokenizer, prompts: List[str], answers: List[str], batch_size: int) -> List[Dict]:
+def run_inference_on_model(model, model_type: ModelType, tokenizer, prompts: List[str], 
+                           answers: List[str], batch_size: int, should_tqdm=True) -> List[Dict]:
     """Run inference on a model with a given tokenizer and device.
     This function is designed to be eval-agnostic, so it doesn't judge or format the answers for you.
     
@@ -32,6 +41,7 @@ def run_inference_on_model(model, model_type: ModelType, tokenizer, prompts: Lis
     prompts: A list of prompts to pass into the model.
     answers: A list of answers the model should output.
     batch_size: How many prompts to pass in at once to the model
+    should_tqdm: A boolean to see if we should display a progress bar.
     
     Returns:
     An object containing a list of {'word': str, 'prompt': str, 'answer': str, 'response': str, 'formatted_response': str} dicts,
@@ -40,7 +50,8 @@ def run_inference_on_model(model, model_type: ModelType, tokenizer, prompts: Lis
     num_batches = (len(prompts) + batch_size - 1) // batch_size
     data = []
 
-    for i in tqdm.tqdm(range(num_batches)):
+    progress = tqdm.tqdm if should_tqdm else noop
+    for i in progress(range(num_batches)):
         start_index = i * batch_size
         end_index = min(len(prompts), start_index + batch_size)
 
@@ -51,12 +62,24 @@ def run_inference_on_model(model, model_type: ModelType, tokenizer, prompts: Lis
         
         for i, response in enumerate(responses):
             data.append({'word': get_word_from_prompt(prompts[start_index + i]),
-                        'prompt': prompts[start_index + i],
+                         'tokens': tokenize_prompt(model, tokenizer, model_type, prompts[start_index + i]),
+                         'prompt': prompts[start_index + i],
                          'answer': answers[start_index + i], 
                          'response': response,
                          'formatted_response': response}) # formatted_response is populated by specific evaluation functions.
     
     return data
+
+
+def tokenize_prompt(model, tokenizer, model_type: ModelType, prompt: str) -> List[str]:
+    """Turn a prompt into a list of tokens."""
+    if model_type == ModelType.HUGGINGFACE:
+        return tokenizer.encode(prompt, add_special_tokens=False)
+    elif model_type == ModelType.TRANSFORMER_LENS:
+        return model.to_tokens(prompt)
+    else:
+        raise ValueError(f"Invalid model type: {model_type}")
+
 
 def run_huggingface_inference(model, tokenizer, prompts: List[str], answers: List[str], temperature=0.0):
     """Pass in a list of prompts with a HuggingFace model, and get a list of responses back."""
@@ -92,7 +115,30 @@ def get_word_from_prompt(prompt: str) -> str:
     return matches[-1] if matches else '' # Then return the last one.
 
 
-def get_accuracy(outputs: List[str], answers: List[str]):
-    """Get the accuracy of a model's outputs compared to a list of answers.
-    Works as a generic accuracy check if you're not looking for something in particular."""
-    return sum([1 if outputs[i] == answers[i] else 0 for i in range(len(outputs))]) / len(outputs)
+def load_huggingface_model(name: str, device: str='cuda:0'):
+    """Load a model and tokenizer from a HuggingFace model name."""
+    if name.startswith('gpt2'):
+        model = GPT2LMHeadModel.from_pretrained(name)
+        tokenizer = GPT2Tokenizer.from_pretrained(name)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(name)
+        tokenizer = AutoTokenizer.from_pretrained(name)
+    model.config.pad_token_id = tokenizer.eos_token_id # Prevent lots of info messages telling us it's doing this every prompt.
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = 'left'
+    model.to(device)
+    return model, tokenizer
+
+
+def load_transformerlens_model(name: str):
+    """Load a model and tokenizer from a TransformerLens model name."""
+    model = HookedTransformer.from_pretrained(name)
+    return model, model.tokenizer
+
+
+def create_wandb_artifact(project_name: str, artifact_name: str, eval_filename: str):
+    """Logs evaluation data to wandb"""
+    run = wandb.init(project=project_name, job_type="add-dataset")
+    artifact = wandb.Artifact(name=artifact_name, type="eval")
+    artifact.add_dir(local_path=eval_filename)  # Add dataset directory to artifact
+    run.log_artifact(artifact)  # Logs the artifact version "my_data:v0"
