@@ -5,6 +5,10 @@ FULL_SPELLING_EVAL = GradeSpellingEval("Spell Full Word",
                                        create_full_spelling_prompt, 
                                        format_full_spelling_response, 
                                        get_spelling_accuracy)
+FULL_SPELLING_PYTHIA_EVAL = GradeSpellingEval("Spell Full Word Pythia",
+                                              create_full_spelling_pythia_prompt,
+                                              format_full_spelling_response,
+                                              get_spelling_accuracy)
 GET_FIRST_LETTER_EVAL = GradeSpellingEval("Spell First Letter", 
                                           create_first_letter_spelling_prompt, 
                                           format_first_letter_response, 
