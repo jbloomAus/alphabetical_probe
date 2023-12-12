@@ -237,22 +237,6 @@ def create_full_spelling_prompt(word: str, word_list: List[Tuple[str, str]], num
     prompt += f"Q: How do you spell '{word}'? A:"
     return prompt, answer
 
-def create_full_spelling_pythia_prompt(word: str, word_list: List[Tuple[str, str]], num_shots: int) -> Tuple[str, str]:
-    """Takes in a word we want to spell, a list of words to sample from, and the number of shots.
-    Tuples are of the form (word, spelling).
-    Creates a prompt that asks for the full spelling of a word.
-    
-    Returns the prompt and the answer to the prompt."""
-    assert 0 <= num_shots < len(word_list), "Number of shots must be between 0 and the number of words in the list, minus the chosen word."
-    _, answer = [w for w in word_list if w[0] == word][0] # Assumes unique words in word_list. TODO: Improve?
-    word_list = [item for item in word_list if item[0] != word] # Remove any words that are the same as the word we want to spell.
-    prompt = ''
-    if num_shots > 0:
-        samples = random.sample(word_list, num_shots)
-        for sample in samples:
-            prompt += f"{sample[0]}: {' '.join([s.upper() for s in sample[0]])}\n\n"
-    prompt += f"{word}:"
-    return prompt, answer
 
 def format_full_spelling_response(item: str) -> str:
     """Format the response to a full spelling prompt."""
