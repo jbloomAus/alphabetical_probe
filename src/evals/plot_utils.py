@@ -1,15 +1,17 @@
 from evals.spelling_by_grade import SpellingEvalDict
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import numpy as np
 import pandas as pd
+import plotly.figure_factory as ff
 import plotly.graph_objects as go
+import string
 
 
-def basic_bar_graph(data: Dict[int, int], ymin=0, ymax=1):
+def basic_bar_graph(data: Dict[int, int], ymin=0, ymax=1, title='', xtitle='', ytitle=''):
     """Creates a basic graph from a set of {x_1: y_1, ... x_n: y_n} data."""
     fig = go.Figure(go.Bar(x=list(data.keys()), y=list(data.values())))
-    fig.update_layout(yaxis=dict(range=[ymin, ymax]))
+    fig.update_layout(title=title, xaxis=dict(title=xtitle), yaxis=dict(range=[ymin, ymax], title=ytitle))
     fig.show()
  
     
@@ -64,12 +66,52 @@ def create_table(dataset: Dict[int, SpellingEvalDict], n_pairs=5):
     df = pd.DataFrame(table, columns=columns)
     df = df.style.apply(lambda x: [style_answers(val, x.iloc[i-1]) if i % 2 else '' for i, val in enumerate(x)], axis=1)
     display(df)
+    
+
+def create_confusion_matrix(data: Dict[Any, Dict], title='', xtitle='', ytitle=''):
+    """Create a confusion matrix for a dictionary of dictionaries representing data."""
+
+    characters = list(string.ascii_uppercase) + ['_'] + ['Other'] # _ is a blank space, 'Other' is miscellaneous.
+    confusion_matrix = np.zeros((len(characters), len(characters)))
+
+    # Mapping characters to indices
+    char_to_index = {char: index for index, char in enumerate(characters)}
+
+    # Populate the confusion matrix
+    for answer_char, resp_dict in data.items():
+        answer_index = char_to_index[answer_char]
+        for resp_char, count in resp_dict.items():
+            resp_index = char_to_index[resp_char]
+            confusion_matrix[answer_index][resp_index] = count
+
+    max_value = int(np.max(confusion_matrix))
+
+    fig = ff.create_annotated_heatmap(
+        z=confusion_matrix,
+        zmin=-max_value, zmax=max_value,
+        x=characters, y=characters, 
+        annotation_text=confusion_matrix.astype(int),
+        colorscale='RdBu',
+        font_colors=['black']
+    )
+
+    fig.update_layout(
+        title=title,
+        xaxis=dict(title=xtitle),
+        yaxis=dict(title=ytitle, autorange='reversed'),
+        autosize=False, width=900, height=900
+    )
+    fig.update_yaxes(scaleanchor="x", scaleratio=1)
+    fig.show()
+
 
 
 def default_table_metric(expected, actual):
+    """Return the metric for when an answer is correct in a table if no metric is provided."""
     return expected.strip() == actual.strip()
 
 
 def style_answers(expected, actual, metric_fn=default_table_metric, true_color='lightgreen', false_color='lightcoral'):
+    """Decides on background color of a table's cell based on whether the answer is correct or not."""
     color = true_color if metric_fn(expected, actual) else false_color
     return f'background-color: {color}'
